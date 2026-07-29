@@ -1,5 +1,5 @@
 -- ============================================================================
---  Predator & Stealth  v8
+--  Predators & Stealth  v1.0.0  --  Palworld UE4SS Lua mod
 --
 --  AGGRESSIVE BY DEFAULT. Only species in PreyList.txt (or the built-in PREY
 --  fallback below) stay passive -- everything else (including all the vanilla
@@ -15,7 +15,7 @@
 -- ============================================================================
 
 local CONFIG = {
-    enabled            = true,   -- diagnostic build: auto-run so the loader logs (safe: no data = no aggro)
+    enabled            = true,   -- master on/off switch
     base_range_m       = 12,
     crouch_mult        = 0.6,  -- crouched detection range = base x this (0.6 -> ~7.2m front)
     front_half_angle   = 90,   -- HALF-angle of the vision cone; 90 = a 180-deg front cone.
@@ -45,8 +45,8 @@ local CONFIG = {
 --  of the mod: hostile world, small docile exceptions.
 --
 --  Keys are the lowercase species id = className with "BP_" / "_C" stripped
---  (same string F9 now prints as "key="). Add/remove freely; elemental variants
---  are separate ids (e.g. hedgehog vs hedgehog_ice) -- add each you want passive.
+--  (e.g. BP_Boar_C -> boar). Add/remove freely; elemental variants are separate
+--  ids (e.g. hedgehog vs hedgehog_ice) -- add each you want passive.
 -- ============================================================================
 local PREY = {
     -- never-fight in vanilla (AIResponse Escape / Friendly)
@@ -239,6 +239,6 @@ end)
 
 
 local preyCount = 0; for _ in pairs(PREY) do preyCount = preyCount + 1 end
-log(string.format("Predator & Stealth v8 loaded [%s]. AGGRESSIVE by default, %d passive species (edit PreyList.txt). base %dm | crouch x%.1f + %d-deg cone (crouch-only), rear x%.2f | hide %s (%ds no-LOS, >%dm, crouch x%.1f).",
+log(string.format("Predators & Stealth v1.0.0 loaded [%s]. AGGRESSIVE by default, %d passive species (edit PreyList.txt). base %dm | crouch x%.1f + %d-deg cone (crouch-only), rear x%.2f | hide %s (%ds no-LOS, >%dm, crouch x%.1f).",
     CONFIG.enabled and "ON" or "OFF", preyCount, CONFIG.base_range_m, CONFIG.crouch_mult, CONFIG.front_half_angle * 2, CONFIG.rear_mult,
     CONFIG.hide_enabled and "ON" or "OFF", CONFIG.hide_seconds, CONFIG.hide_min_distance_m, CONFIG.hide_crouch_mult))
