@@ -26,14 +26,12 @@ local CONFIG = {
     skip_sleeping      = true,
     -- HIDE-TO-ESCAPE: a pal hunting you gives up after hide_seconds with no
     -- line-of-sight AND while it's at least hide_min_distance_m away (so a
-    -- point-blank pal won't lose you behind a thin obstacle). Distance is set a
-    -- bit beyond typical ranged-attack reach so you can't shake a ranged pal
-    -- while still in its firing range. Crouching cuts BOTH the required time and
-    -- the required distance by hide_crouch_mult.
+    -- point-blank pal won't lose you behind a thin obstacle). LOS already stops a
+    -- pal firing at you, so one gate covers melee and ranged alike. Crouching cuts
+    -- BOTH the required time and the required distance by hide_crouch_mult.
     hide_enabled       = true,
     hide_seconds       = 7,
-    hide_min_distance_m       = 15,   -- melee/default: must be this far + no-LOS to lose you
-    hide_min_distance_ranged_m= 38,   -- ranged pals (in RangedList.txt): ~avg ranged reach + buffer
+    hide_min_distance_m = 20,
     hide_crouch_mult   = 0.5,         -- crouching halves both the time AND the distance
     verbose            = false,
 }
@@ -62,12 +60,6 @@ local PREY = {
     alpaca     = true,  -- Melpaca
     penguin    = true,  -- Pengullet
 }
-
--- RANGED species: pals that attack from a distance. They need a larger hide gate
--- (hide_min_distance_ranged_m) so you can't shake them while still in firing range.
--- Populated from RangedList.txt at load (internal species keys). Empty = every pal
--- uses the melee gate until the list is filled in.
-local RANGED = {}
 
 local function log(m) print("[PDST] " .. m .. "\n") end
 local function vlog(m) if CONFIG.verbose then log(m) end end
@@ -112,27 +104,6 @@ local function loadPreyFile()
     log("PreyList.txt loaded: " .. n .. " passive species.")
 end
 pcall(loadPreyFile)
--- Optional RangedList.txt: species that get the larger hide gate. Missing file
--- is fine (RANGED stays empty -> everything uses the melee gate).
-local function loadRangedFile()
-    local dir = modDir(); if not dir then return end
-    local path = dir .. "\\RangedList.txt"
-    local f; pcall(function() f = io.open(path, "r") end)
-    if not f then log("RangedList.txt not present; all pals use the melee hide gate."); return end
-    local n = 0
-    local ok = pcall(function()
-        for line in f:lines() do
-            local s = line:gsub("^%s+", "")
-            if s ~= "" and s:sub(1, 1) ~= "#" then
-                local key = s:match("^([%w_]+)")
-                if key then RANGED[string.lower(key)] = true; n = n + 1 end
-            end
-        end
-    end)
-    pcall(function() f:close() end)
-    if ok then log("RangedList.txt loaded: " .. n .. " ranged species.") end
-end
-pcall(loadRangedFile)
 local function isValid(o) return o ~= nil and type(o) == "userdata" and o.IsValid and o:IsValid() end
 local function classNameOf(o) local n; pcall(function() n = o:GetClass():GetFName():ToString() end); return n end
 local function ctrlName(o) local n; pcall(function() n = o:GetFName():ToString() end); return n or "" end
@@ -231,9 +202,7 @@ local function scan()
                             if id then
                                 seen[id] = true
                                 local loc = getLoc(pal)
-                                -- ranged pals must be pushed further before they lose you
-                                local gateM = RANGED[speciesKey(pal)] and CONFIG.hide_min_distance_ranged_m or CONFIG.hide_min_distance_m
-                                if crouched then gateM = gateM * CONFIG.hide_crouch_mult end
+                                local gateM = crouched and (CONFIG.hide_min_distance_m * CONFIG.hide_crouch_mult) or CONFIG.hide_min_distance_m
                                 local minCm2 = (gateM * 100) ^ 2
                                 local far = loc and (dist2(loc, ploc) >= minCm2)
                                 -- only "lose" you when it CAN'T see you AND you've put distance between you
@@ -506,6 +475,7 @@ local function tryFullDeaggro()
 end
 RegisterKeyBind(Key.F2, function() ExecuteInGameThread(function() local ok,e=pcall(tryFullDeaggro); if not ok then log("F2 err "..tostring(e)) end end) end)
 
+
 RegisterKeyBind(Key.F8, function() CONFIG.enabled = not CONFIG.enabled; log("Predator & Stealth " .. (CONFIG.enabled and "ENABLED" or "DISABLED")) end)
 -- F7: pause the scan (SAFE). NOTE: ChangeHate(player, -N) does NOT de-aggro --
 -- it registers the player as a target (aggro lever, not de-aggro). Real de-aggro
@@ -513,8 +483,7 @@ RegisterKeyBind(Key.F8, function() CONFIG.enabled = not CONFIG.enabled; log("Pre
 RegisterKeyBind(Key.F7, function() CONFIG.enabled = false; log("scan PAUSED (F8 resumes). (F7 no longer touches hate -- ChangeHate-negative backfires.)") end)
 
 local preyCount = 0; for _ in pairs(PREY) do preyCount = preyCount + 1 end
-local rangedCount = 0; for _ in pairs(RANGED) do rangedCount = rangedCount + 1 end
-log(string.format("Predator & Stealth v8 loaded [%s]. AGGRESSIVE by default, %d passive species (edit PreyList.txt). base %dm | crouch x%.1f + %d-deg cone (crouch-only), rear x%.2f | hide %s (%ds no-LOS; %dm melee / %dm ranged[%d]; crouch x%.1f).",
+log(string.format("Predator & Stealth v8 loaded [%s]. AGGRESSIVE by default, %d passive species (edit PreyList.txt). base %dm | crouch x%.1f + %d-deg cone (crouch-only), rear x%.2f | hide %s (%ds no-LOS, >%dm, crouch x%.1f).",
     CONFIG.enabled and "ON" or "OFF", preyCount, CONFIG.base_range_m, CONFIG.crouch_mult, CONFIG.front_half_angle * 2, CONFIG.rear_mult,
-    CONFIG.hide_enabled and "ON" or "OFF", CONFIG.hide_seconds, CONFIG.hide_min_distance_m, CONFIG.hide_min_distance_ranged_m, rangedCount, CONFIG.hide_crouch_mult))
+    CONFIG.hide_enabled and "ON" or "OFF", CONFIG.hide_seconds, CONFIG.hide_min_distance_m, CONFIG.hide_crouch_mult))
 log("  dev keys: F2=de-aggro nearest  F3=hate-only  F6=read HateMap  F9=pal info  F10=dump (stripped at finalize).")
