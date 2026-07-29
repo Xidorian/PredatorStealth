@@ -1,18 +1,18 @@
 -- ============================================================================
---  Predator & Stealth  v4  (dev build in AIProbe folder) -- HARDENED after a crash
+--  Predator & Stealth  v7  (dev build in AIProbe folder)
 --
---  Aggressive by default; small docile prey stay passive.
---    prey = base HP <= prey_hp_max  AND  NOT an actively-hostile response
---    (i.e. not Warlike / Kill_All). Covers Friendly / Escape / NotInterested.
+--  AGGRESSIVE BY DEFAULT. Only species in the curated PREY set (below) stay
+--  passive -- everything else (including all the vanilla "flee-then-fight"
+--  Escape_to_Battle pals) is forced to hunt the player when in range + LOS.
 --  Range scales with level gap (capped); crouch shrinks it; line-of-sight
---  required. Safety-capped aggros per scan. Starts DISABLED (F8 to enable).
+--  required. Safety-capped aggros per scan.
 --
---  F8 = enable/disable.   F7 = pause the scan (safe; no array poking).
+--  Dev keys: F8 enable/disable · F7 pause · F9 nearest-pal info (prints key) ·
+--  F6 read HateMap · F2 full de-aggro · F3 hate-only · F4/F5 dead-end tests.
 -- ============================================================================
 
 local CONFIG = {
     enabled            = true,   -- diagnostic build: auto-run so the loader logs (safe: no data = no aggro)
-    prey_hp_max        = 110,
     base_range_m       = 12,
     crouch_mult        = 0.4,
     front_half_angle   = 75,   -- within this many degrees of the pal's facing = full range (its vision cone)
@@ -27,8 +27,74 @@ local CONFIG = {
     monitor            = true,   -- log any pal currently targeting the player (de-aggro study)
 }
 
+-- ============================================================================
+--  CURATED PREY LIST -- species that STAY PASSIVE (keep vanilla flee/ignore
+--  behavior). EVERYTHING NOT LISTED HERE IS AGGRESSIVE. This is the whole point
+--  of the mod: hostile world, small docile exceptions.
+--
+--  Keys are the lowercase species id = className with "BP_" / "_C" stripped
+--  (same string F9 now prints as "key="). Add/remove freely; elemental variants
+--  are separate ids (e.g. hedgehog vs hedgehog_ice) -- add each you want passive.
+-- ============================================================================
+local PREY = {
+    -- never-fight in vanilla (AIResponse Escape / Friendly)
+    chickenpal = true,  -- Chikipi
+    sheepball  = true,  -- Lamball
+    mimicdog   = true,  -- Depresso
+    dreamdemon = true,  -- Daedream
+    carbunclo  = true,
+    -- classic small docile livestock/critters
+    pinkcat    = true,  -- Cattiva
+    cutefox    = true,  -- Vixy
+    woolfox    = true,  -- Cremis
+    cowpal     = true,  -- Mozzarina
+    alpaca     = true,  -- Melpaca
+    penguin    = true,  -- Pengullet
+}
+
 local function log(m) print("[PDST] " .. m .. "\n") end
 local function vlog(m) if CONFIG.verbose then log(m) end end
+
+-- Load the player-editable PreyList.txt (overrides the built-in PREY set above).
+-- Any failure (no io lib, file missing, parse error, empty) keeps the built-in
+-- defaults so the mod always works. Path is derived from this script's location.
+local function modDir()
+    local src; pcall(function() src = debug.getinfo(1, "S").source end)
+    if src then
+        src = src:gsub("^@", "")
+        local d = src:match("^(.*)[/\\][Ss]cripts[/\\][^/\\]+$")
+        if d then return d end
+    end
+    if package and package.path then
+        local d = package.path:match("([^;]*)[/\\][Ss]cripts[/\\]%?%.lua")
+        if d then return d end
+    end
+    return nil
+end
+local function loadPreyFile()
+    local dir = modDir()
+    if not dir then log("PreyList: mod dir unknown; using built-in defaults"); return end
+    local path = dir .. "\\PreyList.txt"
+    local f; pcall(function() f = io.open(path, "r") end)
+    if not f then log("PreyList.txt not readable; using built-in defaults (" .. path .. ")"); return end
+    local set, n = {}, 0
+    local ok = pcall(function()
+        for line in f:lines() do
+            local s = line:gsub("^%s+", "")
+            if s ~= "" and s:sub(1, 1) ~= "#" then
+                local key = s:match("^([%w_]+)")
+                if key then set[string.lower(key)] = true; n = n + 1 end
+            end
+        end
+    end)
+    pcall(function() f:close() end)
+    if not ok then log("PreyList parse error; using built-in defaults"); return end
+    if n == 0 then log("PreyList.txt has 0 passive entries; using built-in defaults"); return end
+    for k in pairs(PREY) do PREY[k] = nil end
+    for k in pairs(set) do PREY[k] = true end
+    log("PreyList.txt loaded: " .. n .. " passive species.")
+end
+pcall(loadPreyFile)
 local function isValid(o) return o ~= nil and type(o) == "userdata" and o.IsValid and o:IsValid() end
 local function classNameOf(o) local n; pcall(function() n = o:GetClass():GetFName():ToString() end); return n end
 local function ctrlName(o) local n; pcall(function() n = o:GetFName():ToString() end); return n or "" end
@@ -77,13 +143,11 @@ local function speciesKey(pal)
     local c = classNameOf(pal); if not c then return nil end
     return string.lower(c:gsub("^BP_", ""):gsub("_C$", ""))
 end
--- prey = small AND not actively hostile. Unknown species -> not prey (aggressive).
+-- prey = in the curated PREY set. Everything else (incl. unknown/new species,
+-- and all the "Escape_to_Battle" flee-then-fight pals) is aggressive.
 local function isPrey(pal)
-    if not PDATA then return true end   -- if data somehow missing, treat as prey (safe: no aggro)
-    local k = speciesKey(pal); if not k then return true end
-    local d = PDATA[k]; if not d then return false end
-    local hostile = d.resp:find("warlike") or d.resp:find("kill")
-    return (d.hp <= CONFIG.prey_hp_max) and (hostile == nil)
+    local k = speciesKey(pal); if not k then return false end
+    return PREY[k] == true
 end
 
 local function getLevel(actor) local lvl=1; pcall(function() lvl = tonumber(tostring(actor.CharacterParameterComponent:GetLevel())) or 1 end); return lvl end
@@ -115,7 +179,6 @@ end
 local function scan()
     if CONFIG.monitor then pcall(monitorTargeting) end
     if not CONFIG.enabled then return end
-    if not loadPalData() then return end
     local player = FindFirstOf("PalPlayerCharacter"); if not isValid(player) then return end
     local pLevel = getLevel(player)
     local crouched = false; pcall(function() crouched = player.bIsCrouched end)
@@ -184,8 +247,8 @@ local function info()
     local rangeM = CONFIG.base_range_m * (1 + bonus)
     if crouched then rangeM = rangeM * CONFIG.crouch_mult end
     local nloc = getLoc(nearest); if nloc then rangeM = rangeM * frontFactor(nearest, nloc, ploc) end
-    log(string.format("INFO %s  dist=%.1fm  prey=%s (hp=%s resp=%s)  crouched=%s  ourAggroRange=%.1fm  LOS=%s",
-        classNameOf(nearest) or "?", distM, tostring(isPrey(nearest)),
+    log(string.format("INFO %s  key=%s  dist=%.1fm  prey=%s (hp=%s resp=%s)  crouched=%s  ourAggroRange=%.1fm  LOS=%s",
+        classNameOf(nearest) or "?", tostring(key), distM, tostring(isPrey(nearest)),
         d and tostring(d.hp) or "?", d and d.resp or "?", tostring(crouched), rangeM, tostring(los)))
 end
 RegisterKeyBind(Key.F9, function() local ok,e=pcall(info); if not ok then log("info err "..tostring(e)) end end)
@@ -404,6 +467,7 @@ RegisterKeyBind(Key.F8, function() CONFIG.enabled = not CONFIG.enabled; log("Pre
 -- is still an open problem (see PALWORLD_MODDING_REFERENCE.md).
 RegisterKeyBind(Key.F7, function() CONFIG.enabled = false; log("scan PAUSED (F8 resumes). (F7 no longer touches hate -- ChangeHate-negative backfires.)") end)
 
-log(string.format("Predator & Stealth v6 loaded [%s]. prey HP<=%d, base %dm, crouch x%.1f, rear x%.2f (cone %d deg). F8 toggle, F7 pause.",
-    CONFIG.enabled and "ON" or "OFF", CONFIG.prey_hp_max, CONFIG.base_range_m, CONFIG.crouch_mult, CONFIG.rear_mult, CONFIG.front_half_angle))
+local preyCount = 0; for _ in pairs(PREY) do preyCount = preyCount + 1 end
+log(string.format("Predator & Stealth v7 loaded [%s]. AGGRESSIVE by default, %d passive species (edit PreyList.txt). base %dm, crouch x%.1f, rear x%.2f (cone %d deg).",
+    CONFIG.enabled and "ON" or "OFF", preyCount, CONFIG.base_range_m, CONFIG.crouch_mult, CONFIG.rear_mult, CONFIG.front_half_angle))
 log("  F6=read.  F2=FULL de-aggro(hate+targets)  F3=hate-only  F4=ChangeHate(0)  F5=SetActiveAI(false).")
