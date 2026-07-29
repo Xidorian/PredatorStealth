@@ -24,8 +24,11 @@ local CONFIG = {
     max_aggros_per_scan= 4,      -- safety: never force more than this per tick
     require_los        = true,
     skip_sleeping      = true,
+    -- HIDE-TO-ESCAPE: a pal hunting you gives up after this long with no line-of-sight.
+    hide_enabled       = true,
+    hide_seconds       = 5,
     verbose            = false,
-    monitor            = true,   -- log any pal currently targeting the player (de-aggro study)
+    monitor            = false,  -- dev: log nearest hunter each tick (extra FindAllOf; off by default)
 }
 
 -- ============================================================================
@@ -156,6 +159,18 @@ local function getLevel(actor) local lvl=1; pcall(function() lvl = tonumber(tost
 local function tpCount(ctrl) local n=0; pcall(function() n=ctrl.TargetPlayers:GetArrayNum() end); return n end
 local function hasLOS(ctrl, player) local r=false; pcall(function() r = ctrl:LineOfSightTo(player, nil, false) end); return r end
 local function isSleeping(ctrl) local r=false; pcall(function() r = ctrl:IsSleeping() end); return r end
+-- stable per-instance id (e.g. "BP_Boar_C_2147480781") for cross-tick tracking
+local function objId(o) local n; pcall(function() n = o:GetFName():ToString() end); return n end
+-- THE de-aggro call: clear hate map + the active target list (see reference §3)
+local function clearAggro(ctrl)
+    local hs; pcall(function() hs = ctrl:GetHateSystem() end)
+    if isValid(hs) then local hm; pcall(function() hm = hs.HateMap end); if hm ~= nil then pcall(function() hm:Empty() end) end end
+    pcall(function() ctrl.TargetPlayers:Empty() end)
+end
+
+-- hide-to-escape state: id -> consecutive scan ticks a hunter has had NO line-of-sight.
+-- Rebuilt every scan and pruned to only currently-present hunters (no stale growth).
+local HUNTERS = {}
 
 -- log the nearest pal actively targeting the player (runs even when paused)
 local function monitorTargeting()
@@ -187,28 +202,50 @@ local function scan()
     local ploc = getLoc(player); if not ploc then return end
 
     local pals = FindAllOf("PalCharacter"); if not pals then return end
+    local hide_ticks = math.max(1, math.floor(CONFIG.hide_seconds * 1000 / CONFIG.scan_ms + 0.5))
     local aggroed = 0
+    local seen = {}   -- hunter ids present this tick (for pruning HUNTERS)
     for _, pal in ipairs(pals) do
-        if aggroed >= CONFIG.max_aggros_per_scan then break end
         if isValid(pal) and pal ~= player then
             local cls = classNameOf(pal)
-            if cls and not cls:find("Player") and not isPrey(pal) then
+            if cls and not cls:find("Player") then
                 local ctrl; pcall(function() ctrl = pal.Controller end)
-                if isValid(ctrl) and ctrlName(ctrl):find("Wild") and tpCount(ctrl) == 0 then
-                    local loc = getLoc(pal)
-                    local gap = getLevel(pal) - pLevel
-                    local bonus = (gap > 0) and math.min(gap * CONFIG.per_level_bonus, CONFIG.level_bonus_cap) or 0
-                    local rangeM = CONFIG.base_range_m * (1 + bonus)
-                    if crouched then
-                        rangeM = rangeM * CONFIG.crouch_mult
-                        -- vision cone only matters while crouched: standing = detected from any direction
-                        if loc then rangeM = rangeM * frontFactor(pal, loc, ploc) end
-                    end
-                    local rangeCm = rangeM * 100
-                    if loc and dist2(loc, ploc) <= rangeCm * rangeCm then
-                        if not (CONFIG.skip_sleeping and isSleeping(ctrl)) then
-                            if (not CONFIG.require_los) or hasLOS(ctrl, player) then
-                                if isValid(ctrl) and isValid(player) then
+                if isValid(ctrl) and ctrlName(ctrl):find("Wild") then
+                    local tp = tpCount(ctrl)
+                    if tp > 0 then
+                        -- HIDE-TO-ESCAPE: this pal is hunting the player.
+                        if CONFIG.hide_enabled then
+                            local id = objId(pal)
+                            if id then
+                                seen[id] = true
+                                if hasLOS(ctrl, player) then
+                                    HUNTERS[id] = 0                       -- can see you: reset the timer
+                                else
+                                    local n = (HUNTERS[id] or 0) + 1
+                                    HUNTERS[id] = n
+                                    if n >= hide_ticks then
+                                        clearAggro(ctrl)                  -- lost line-of-sight long enough: give up
+                                        HUNTERS[id] = nil; seen[id] = nil
+                                        log("hide-escape: " .. (cls or "?") .. " lost you (no LOS " .. CONFIG.hide_seconds .. "s)")
+                                    end
+                                end
+                            end
+                        end
+                    elseif not isPrey(pal) and aggroed < CONFIG.max_aggros_per_scan then
+                        -- ACQUIRE: not yet hunting, aggressive species -> aggro if in range + LOS
+                        local loc = getLoc(pal)
+                        local gap = getLevel(pal) - pLevel
+                        local bonus = (gap > 0) and math.min(gap * CONFIG.per_level_bonus, CONFIG.level_bonus_cap) or 0
+                        local rangeM = CONFIG.base_range_m * (1 + bonus)
+                        if crouched then
+                            rangeM = rangeM * CONFIG.crouch_mult
+                            -- vision cone only matters while crouched: standing = detected from any direction
+                            if loc then rangeM = rangeM * frontFactor(pal, loc, ploc) end
+                        end
+                        local rangeCm = rangeM * 100
+                        if loc and dist2(loc, ploc) <= rangeCm * rangeCm then
+                            if not (CONFIG.skip_sleeping and isSleeping(ctrl)) then
+                                if (not CONFIG.require_los) or hasLOS(ctrl, player) then
                                     pcall(function() ctrl:ForceBattleStartToTarget(player) end)
                                     aggroed = aggroed + 1
                                     vlog("aggro " .. (cls or "?") .. string.format(" (gap %+d, %.0fm%s)", gap, rangeM, crouched and ", crouched" or ""))
@@ -220,6 +257,8 @@ local function scan()
             end
         end
     end
+    -- prune trackers for hunters no longer present (despawned / left / de-aggro'd) -> no stale growth
+    for id in pairs(HUNTERS) do if not seen[id] then HUNTERS[id] = nil end end
     if aggroed > 0 then vlog("scan aggroed " .. aggroed) end
 end
 
@@ -475,6 +514,7 @@ RegisterKeyBind(Key.F8, function() CONFIG.enabled = not CONFIG.enabled; log("Pre
 RegisterKeyBind(Key.F7, function() CONFIG.enabled = false; log("scan PAUSED (F8 resumes). (F7 no longer touches hate -- ChangeHate-negative backfires.)") end)
 
 local preyCount = 0; for _ in pairs(PREY) do preyCount = preyCount + 1 end
-log(string.format("Predator & Stealth v7 loaded [%s]. AGGRESSIVE by default, %d passive species (edit PreyList.txt). base %dm | crouch x%.1f + %d-deg cone (crouch-only), rear x%.2f.",
-    CONFIG.enabled and "ON" or "OFF", preyCount, CONFIG.base_range_m, CONFIG.crouch_mult, CONFIG.front_half_angle * 2, CONFIG.rear_mult))
+log(string.format("Predator & Stealth v8 loaded [%s]. AGGRESSIVE by default, %d passive species (edit PreyList.txt). base %dm | crouch x%.1f + %d-deg cone (crouch-only), rear x%.2f | hide-to-escape %s (%ds no-LOS).",
+    CONFIG.enabled and "ON" or "OFF", preyCount, CONFIG.base_range_m, CONFIG.crouch_mult, CONFIG.front_half_angle * 2, CONFIG.rear_mult,
+    CONFIG.hide_enabled and "ON" or "OFF", CONFIG.hide_seconds))
 log("  F6=read.  F2=FULL de-aggro(hate+targets)  F3=hate-only  F4=ChangeHate(0)  F5=SetActiveAI(false).")
