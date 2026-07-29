@@ -238,40 +238,10 @@ end
 RegisterKeyBind(Key.F10, function() local ok,e=pcall(dumpCtrl); if not ok then log("dump err "..tostring(e)) end end)
 
 RegisterKeyBind(Key.F8, function() CONFIG.enabled = not CONFIG.enabled; log("Predator & Stealth " .. (CONFIG.enabled and "ENABLED" or "DISABLED")) end)
--- F7: proper de-aggro via the hate system. Hits ALL nearby wild pals (not just
--- TargetPlayers) and logs each one's top hate target before/after ChangeHate.
-local function hateTargetName(hs)
-    local n = "none"; pcall(function() local t = hs:FindMostHateTarget(); if t and t.IsValid and t:IsValid() then n = classNameOf(t) or "?" end end)
-    return n
-end
-local function deaggro()
-    CONFIG.enabled = false
-    local player = FindFirstOf("PalPlayerCharacter"); if not isValid(player) then return end
-    local ploc = getLoc(player); if not ploc then return end
-    local pals = FindAllOf("PalCharacter"); if not pals then return end
-    local R = 5000 -- 50m
-    local touched = 0
-    for _, pal in ipairs(pals) do
-        if isValid(pal) and pal ~= player then
-            local ctrl; pcall(function() ctrl = pal.Controller end)
-            if isValid(ctrl) and ctrlName(ctrl):find("Wild") then
-                local loc = getLoc(pal)
-                if loc and dist2(loc, ploc) <= R * R then
-                    local hs; pcall(function() hs = ctrl:GetHateSystem() end)
-                    if isValid(hs) then
-                        local before = hateTargetName(hs)
-                        pcall(function() hs:ChangeHate(player, -1000000) end)
-                        local after = hateTargetName(hs)
-                        touched = touched + 1
-                        if touched <= 6 then log(string.format("deaggro %s: topTarget %s -> %s", classNameOf(pal) or "?", before, after)) end
-                    end
-                end
-            end
-        end
-    end
-    log("DE-AGGRO ChangeHate on " .. touched .. " nearby wild pal(s). PAUSED (F8 resumes).")
-end
-RegisterKeyBind(Key.F7, function() local ok,e=pcall(deaggro); if not ok then log("deaggro err "..tostring(e)) end end)
+-- F7: pause the scan (SAFE). NOTE: ChangeHate(player, -N) does NOT de-aggro --
+-- it registers the player as a target (aggro lever, not de-aggro). Real de-aggro
+-- is still an open problem (see PALWORLD_MODDING_REFERENCE.md).
+RegisterKeyBind(Key.F7, function() CONFIG.enabled = false; log("scan PAUSED (F8 resumes). (F7 no longer touches hate -- ChangeHate-negative backfires.)") end)
 
 log(string.format("Predator & Stealth v6 loaded [%s]. prey HP<=%d, base %dm, crouch x%.1f, rear x%.2f (cone %d deg). F8 toggle, F7 pause.",
     CONFIG.enabled and "ON" or "OFF", CONFIG.prey_hp_max, CONFIG.base_range_m, CONFIG.crouch_mult, CONFIG.rear_mult, CONFIG.front_half_angle))
