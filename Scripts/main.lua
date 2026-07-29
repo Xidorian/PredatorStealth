@@ -1,14 +1,17 @@
 -- ============================================================================
---  Predator & Stealth  v7  (dev build in AIProbe folder)
+--  Predator & Stealth  v8
 --
---  AGGRESSIVE BY DEFAULT. Only species in the curated PREY set (below) stay
---  passive -- everything else (including all the vanilla "flee-then-fight"
---  Escape_to_Battle pals) is forced to hunt the player when in range + LOS.
---  Range scales with level gap (capped); crouch shrinks it; line-of-sight
---  required. Safety-capped aggros per scan.
+--  AGGRESSIVE BY DEFAULT. Only species in PreyList.txt (or the built-in PREY
+--  fallback below) stay passive -- everything else (including all the vanilla
+--  "flee-then-fight" Escape_to_Battle pals) is forced to hunt the player when in
+--  range + line-of-sight. Range scales with level gap (capped); crouch shrinks
+--  it and adds a rear stealth cone; safety-capped aggros per scan.
 --
---  Dev keys: F8 enable/disable · F7 pause · F9 nearest-pal info (prints key) ·
---  F6 read HateMap · F2 full de-aggro · F3 hate-only · F4/F5 dead-end tests.
+--  HIDE-TO-ESCAPE: a pursuer that loses line-of-sight to you AND is far enough
+--  away for a few seconds gives up (clears its hate map + target list).
+--
+--  Runs automatically -- no keybinds. Tune via the CONFIG block below and the
+--  player-editable PreyList.txt next to this Scripts folder.
 -- ============================================================================
 
 local CONFIG = {
@@ -125,38 +128,16 @@ local function frontFactor(pal, palLoc, ploc)
     if angle <= CONFIG.front_half_angle then return 1 else return CONFIG.rear_mult end
 end
 
--- per-species data (HP + AI response). Retries until the table is populated.
-local PDATA = nil
-local function loadPalData()
-    if PDATA ~= nil then return true end
-    local dt = StaticFindObject("/Game/Pal/DataTable/Character/DT_PalMonsterParameter.DT_PalMonsterParameter")
-    if not isValid(dt) then return false end
-    local t, n = {}, 0
-    local ok = pcall(function()
-        dt:ForEachRow(function(rowName, rowData)
-            local key = tostring(rowName)   -- rowName is a plain string here, not userdata
-            if key and key ~= "" then
-                local hp = 9999; pcall(function() hp = tonumber(tostring(rowData.Hp)) or 9999 end)
-                local resp = ""; pcall(function() resp = string.lower(rowData.AIResponse:ToString()) end)  -- FName -> string
-                t[string.lower(key)] = { hp = hp, resp = resp }
-                n = n + 1
-            end
-        end)
-    end)
-    if not ok or n == 0 then return false end   -- don't cache an empty result; retry next scan
-    PDATA = t
-    log("pal data loaded (" .. n .. " species)")
-    return true
-end
-
-local function speciesKey(pal)
-    local c = classNameOf(pal); if not c then return nil end
-    return string.lower(c:gsub("^BP_", ""):gsub("_C$", ""))
+-- species id from a className ("BP_Boar_C" -> "boar"). Caller passes the class
+-- name it already resolved, so we don't re-reflect.
+local function speciesKey(cls)
+    if not cls then return nil end
+    return string.lower(cls:gsub("^BP_", ""):gsub("_C$", ""))
 end
 -- prey = in the curated PREY set. Everything else (incl. unknown/new species,
 -- and all the "Escape_to_Battle" flee-then-fight pals) is aggressive.
-local function isPrey(pal)
-    local k = speciesKey(pal); if not k then return false end
+local function isPrey(cls)
+    local k = speciesKey(cls); if not k then return false end
     return PREY[k] == true
 end
 
@@ -220,7 +201,7 @@ local function scan()
                                 end
                             end
                         end
-                    elseif not isPrey(pal) and aggroed < CONFIG.max_aggros_per_scan then
+                    elseif not isPrey(cls) and aggroed < CONFIG.max_aggros_per_scan then
                         -- ACQUIRE: not yet hunting, aggressive species -> aggro if in range + LOS
                         local loc = getLoc(pal)
                         local gap = getLevel(pal) - pLevel
@@ -256,234 +237,8 @@ LoopAsync(CONFIG.scan_ms, function()
     return false
 end)
 
--- F9: readout of the nearest pal (distance + how we classify it)
-local function info()
-    local player = FindFirstOf("PalPlayerCharacter"); if not isValid(player) then log("INFO: no player"); return end
-    loadPalData()
-    local ploc = getLoc(player); if not ploc then return end
-    local pLevel = getLevel(player)
-    local crouched = false; pcall(function() crouched = player.bIsCrouched end)
-    local pals = FindAllOf("PalCharacter"); if not pals then return end
-    local nearest, nd = nil, math.huge
-    for _, p in ipairs(pals) do
-        if isValid(p) and p ~= player and not tostring(classNameOf(p) or ""):find("Player") then
-            local loc = getLoc(p); if loc then local d = dist2(loc, ploc); if d < nd then nd = d; nearest = p end end
-        end
-    end
-    if not isValid(nearest) then log("INFO: no pal nearby"); return end
-    local distM = math.sqrt(nd) / 100
-    local key = speciesKey(nearest); local d = PDATA and PDATA[key]
-    local ctrl; pcall(function() ctrl = nearest.Controller end)
-    local los = isValid(ctrl) and hasLOS(ctrl, player) or false
-    local gap = getLevel(nearest) - pLevel
-    local bonus = (gap > 0) and math.min(gap * CONFIG.per_level_bonus, CONFIG.level_bonus_cap) or 0
-    local rangeM = CONFIG.base_range_m * (1 + bonus)
-    if crouched then
-        rangeM = rangeM * CONFIG.crouch_mult
-        local nloc = getLoc(nearest); if nloc then rangeM = rangeM * frontFactor(nearest, nloc, ploc) end
-    end
-    log(string.format("INFO %s  key=%s  dist=%.1fm  prey=%s (hp=%s resp=%s)  crouched=%s  ourAggroRange=%.1fm  LOS=%s",
-        classNameOf(nearest) or "?", tostring(key), distM, tostring(isPrey(nearest)),
-        d and tostring(d.hp) or "?", d and d.resp or "?", tostring(crouched), rangeM, tostring(los)))
-end
-RegisterKeyBind(Key.F9, function() local ok,e=pcall(info); if not ok then log("info err "..tostring(e)) end end)
-
--- F10: dump the nearest wild pal controller's full function list (find a safe de-aggro fn)
-local function fnName(x) local n; pcall(function() n = x:GetFName():ToString() end); return n or "?" end
-local function dumpCtrl()
-    local player = FindFirstOf("PalPlayerCharacter"); if not isValid(player) then return end
-    local ploc = getLoc(player); if not ploc then return end
-    local pals = FindAllOf("PalCharacter"); if not pals then return end
-    local nearest, nd = nil, math.huge
-    for _, p in ipairs(pals) do
-        if isValid(p) and p ~= player and not tostring(classNameOf(p) or ""):find("Player") then
-            local loc = getLoc(p); if loc then local d = dist2(loc, ploc); if d < nd then nd = d; nearest = p end end
-        end
-    end
-    if not isValid(nearest) then log("CTRLFN: no pal nearby"); return end
-    local ctrl; pcall(function() ctrl = nearest.Controller end)
-    if not isValid(ctrl) then log("CTRLFN: no controller"); return end
-    log("=== CTRLFN dump: " .. (classNameOf(ctrl) or "?"))
-    local ok, cls = pcall(function() return ctrl:GetClass() end)
-    local depth = 0
-    while ok and isValid(cls) and depth < 15 do
-        local cn = fnName(cls)
-        pcall(function() cls:ForEachFunction(function(fn) log("CTRLFN|" .. cn .. "|" .. fnName(fn)) end) end)
-        local sok, sup = pcall(function() return cls:GetSuperStruct() end)
-        if not (sok and isValid(sup)) then break end
-        cls = sup; depth = depth + 1
-    end
-    -- the hate system is where aggro/targets actually live
-    local hs; pcall(function() hs = ctrl:GetHateSystem() end)
-    if isValid(hs) then
-        log("=== HATE dump: " .. (classNameOf(hs) or "?"))
-        local hok, hcls = pcall(function() return hs:GetClass() end)
-        local d2 = 0
-        while hok and isValid(hcls) and d2 < 15 do
-            local hcn = fnName(hcls)
-            pcall(function() hcls:ForEachFunction(function(fn) log("HATEFN|" .. hcn .. "|" .. fnName(fn)) end) end)
-            pcall(function() hcls:ForEachProperty(function(pr) log("HATEPROP|" .. hcn .. "|" .. fnName(pr)) end) end)
-            local sok, sup = pcall(function() return hcls:GetSuperStruct() end)
-            if not (sok and isValid(sup)) then break end
-            hcls = sup; d2 = d2 + 1
-        end
-        log("HATE dump done")
-    else
-        log("no hate system resolved")
-    end
-    log("CTRLFN dump done")
-end
-RegisterKeyBind(Key.F10, function() local ok,e=pcall(dumpCtrl); if not ok then log("dump err "..tostring(e)) end end)
-
--- F6: READ the hate map (step 1 of de-aggro plan). SAFE / read-only.
--- Picks the nearest wild pal that is targeting the player (else nearest pal),
--- gets its PalHate, and dumps the HateMap via the real TMap API
--- (Find/Contains/ForEach). Tells us the value type + the actual number so we
--- can write correct mutation tests next.
-local function nearestPal(player, ploc, preferTargeting)
-    local pals = FindAllOf("PalCharacter"); if not pals then return nil end
-    local targeting, td = nil, math.huge
-    local nearest, nd = nil, math.huge
-    for _, p in ipairs(pals) do
-        if isValid(p) and p ~= player and not tostring(classNameOf(p) or ""):find("Player") then
-            local loc = getLoc(p)
-            if loc then
-                local d = dist2(loc, ploc)
-                if d < nd then nd = d; nearest = p end
-                if preferTargeting then
-                    local ctrl; pcall(function() ctrl = p.Controller end)
-                    if isValid(ctrl) and ctrlName(ctrl):find("Wild") and tpCount(ctrl) > 0 and d < td then td = d; targeting = p end
-                end
-            end
-        end
-    end
-    return targeting or nearest
-end
-
--- resolve an FWeakObjectPtr map key -> the actor's class name (else nil)
-local function keyActorName(k)
-    local a; if pcall(function() a = k:Get() end) and a ~= nil then
-        local cn; pcall(function() cn = classNameOf(a) end); return cn or "obj"
-    end
-    return nil
-end
--- describe the hate-value cell (a UScriptStruct). We don't need its fields for
--- de-aggro; just note it's a struct.
-local function describeVal(v)
-    if type(v) ~= "userdata" then return type(v) .. ":" .. tostring(v) end
-    local st; pcall(function() st = v:type() end)
-    return "struct(" .. tostring(st or "?") .. ")"
-end
-
-local function hateReadout()
-    local player = FindFirstOf("PalPlayerCharacter"); if not isValid(player) then log("HATE: no player"); return end
-    local ploc = getLoc(player); if not ploc then return end
-    local pal = nearestPal(player, ploc, true)
-    if not isValid(pal) then log("HATE: no pal nearby"); return end
-    local ctrl; pcall(function() ctrl = pal.Controller end)
-    if not isValid(ctrl) then log("HATE: no controller"); return end
-    local hs; pcall(function() hs = ctrl:GetHateSystem() end)
-    if not isValid(hs) then log("HATE: no hate system"); return end
-    log(string.format("=== HATE readout: pal=%s tp=%d los=%s", classNameOf(pal) or "?",
-        tpCount(ctrl), tostring(hasLOS(ctrl, player))))
-    local top; pcall(function() top = hs:FindMostHateTarget() end)
-    log("  topTarget=" .. (isValid(top) and (classNameOf(top) or "?") or "none"))
-
-    local hm; local okm = pcall(function() hm = hs.HateMap end)
-    if not okm or hm == nil then log("  HateMap=<nil> (ok=" .. tostring(okm) .. ")"); return end
-    log("  HateMap luatype=" .. type(hm))
-    local mtype; if pcall(function() mtype = hm:type() end) and mtype then log("  HateMap:type()=" .. tostring(mtype)) end
-
-    local cont; local okc = pcall(function() cont = hm:Contains(player) end)
-    log("  Contains(player)=" .. (okc and tostring(cont) or "ERR"))
-    local fv; local okf = pcall(function() fv = hm:Find(player) end)
-    log("  Find(player)=" .. (okf and describeVal(fv) or "ERR"))
-
-    local count = 0
-    local oke = pcall(function()
-        hm:ForEach(function(k, v)
-            count = count + 1
-            local kn = (type(k) == "userdata") and (keyActorName(k) or "udata") or (type(k) .. ":" .. tostring(k))
-            local isPlayer = tostring(kn):find("Player") ~= nil
-            log(string.format("  [%d] key=%s%s val=%s", count, tostring(kn), isPlayer and " <-PLAYER" or "", describeVal(v)))
-        end)
-    end)
-    if not oke then log("  ForEach ERR") end
-    log(string.format("HATE readout done (%d entries)", count))
-end
-RegisterKeyBind(Key.F6, function() local ok,e=pcall(hateReadout); if not ok then log("hate err "..tostring(e)) end end)
-
--- ==== DE-AGGRO EXPERIMENTS (mutation) ====================================
--- Both pause our scan first (so it can't instantly re-aggro), grab the nearest
--- wild pal that is targeting the player, snapshot state, act, then re-snapshot.
-local function targetingPal()
-    local player = FindFirstOf("PalPlayerCharacter"); if not isValid(player) then return nil end
-    local ploc = getLoc(player); if not ploc then return nil, player end
-    return nearestPal(player, ploc, true), player
-end
--- log topTarget / TargetPlayers count / HateMap entry count
-local function hateSnapshot(tag, pal, ctrl, hs)
-    local top; pcall(function() top = hs:FindMostHateTarget() end)
-    local hm; pcall(function() hm = hs.HateMap end)
-    local cnt = 0; if hm ~= nil then pcall(function() hm:ForEach(function() cnt = cnt + 1 end) end) end
-    log(string.format("  %s: pal=%s tp=%d top=%s mapCount=%d", tag, classNameOf(pal) or "?",
-        tpCount(ctrl), isValid(top) and (classNameOf(top) or "?") or "none", cnt))
-end
--- shared setup: pause scan, resolve pal->ctrl->hs. Returns pal,ctrl,hs,player or nil.
-local function deaggroSetup(label)
-    CONFIG.enabled = false
-    local pal, player = targetingPal()
-    if not isValid(pal) then log(label .. ": no targeting pal nearby"); return end
-    local ctrl; pcall(function() ctrl = pal.Controller end)
-    if not isValid(ctrl) then log(label .. ": no controller"); return end
-    local hs; pcall(function() hs = ctrl:GetHateSystem() end)
-    if not isValid(hs) then log(label .. ": no hate system"); return end
-    return pal, ctrl, hs, player
-end
-
--- (F4 ChangeHate(0) and F5 SetActiveAI(false) experiments removed -- both
---  confirmed dead ends for de-aggro; see reference §3.)
-
--- F3: HateMap:Empty()  -- clear the whole hate map (only entry = the player).
--- No key-matching (that's why Find/Contains/Remove-by-key failed on weakptr keys).
-local function tryEmptyHate()
-    local pal, ctrl, hs = deaggroSetup("F3")
-    if not hs then return end
-    local hm; pcall(function() hm = hs.HateMap end)
-    if hm == nil then log("F3: no HateMap"); return end
-    log("=== F3 HateMap:Empty() ===")
-    hateSnapshot("BEFORE", pal, ctrl, hs)
-    local ok, e = pcall(function() hm:Empty() end)
-    log("  Empty() -> " .. (ok and "ok" or ("ERR " .. tostring(e))))
-    hateSnapshot("AFTER", pal, ctrl, hs)
-end
-RegisterKeyBind(Key.F3, function() ExecuteInGameThread(function() local ok,e=pcall(tryEmptyHate); if not ok then log("F3 err "..tostring(e)) end end) end)
-
--- F2: FULL de-aggro attempt -- clear HateMap AND TargetPlayers. The last test
--- proved the active target is held in TargetPlayers (tp=1) independently of the
--- hate map, so we clear both. TargetPlayers:Empty is the risky container op.
-local function tryFullDeaggro()
-    local pal, ctrl, hs = deaggroSetup("F2")
-    if not hs then return end
-    log("=== F2 full de-aggro (HateMap:Empty + TargetPlayers:Empty) ===")
-    hateSnapshot("BEFORE", pal, ctrl, hs)
-    local hm; pcall(function() hm = hs.HateMap end)
-    if hm ~= nil then local okh = pcall(function() hm:Empty() end); log("  HateMap:Empty -> " .. tostring(okh)) end
-    local okt, et = pcall(function() ctrl.TargetPlayers:Empty() end)
-    log("  TargetPlayers:Empty -> " .. (okt and "ok" or ("ERR " .. tostring(et))))
-    hateSnapshot("AFTER", pal, ctrl, hs)
-end
-RegisterKeyBind(Key.F2, function() ExecuteInGameThread(function() local ok,e=pcall(tryFullDeaggro); if not ok then log("F2 err "..tostring(e)) end end) end)
-
-
-RegisterKeyBind(Key.F8, function() CONFIG.enabled = not CONFIG.enabled; log("Predator & Stealth " .. (CONFIG.enabled and "ENABLED" or "DISABLED")) end)
--- F7: pause the scan (SAFE). NOTE: ChangeHate(player, -N) does NOT de-aggro --
--- it registers the player as a target (aggro lever, not de-aggro). Real de-aggro
--- is still an open problem (see PALWORLD_MODDING_REFERENCE.md).
-RegisterKeyBind(Key.F7, function() CONFIG.enabled = false; log("scan PAUSED (F8 resumes). (F7 no longer touches hate -- ChangeHate-negative backfires.)") end)
 
 local preyCount = 0; for _ in pairs(PREY) do preyCount = preyCount + 1 end
 log(string.format("Predator & Stealth v8 loaded [%s]. AGGRESSIVE by default, %d passive species (edit PreyList.txt). base %dm | crouch x%.1f + %d-deg cone (crouch-only), rear x%.2f | hide %s (%ds no-LOS, >%dm, crouch x%.1f).",
     CONFIG.enabled and "ON" or "OFF", preyCount, CONFIG.base_range_m, CONFIG.crouch_mult, CONFIG.front_half_angle * 2, CONFIG.rear_mult,
     CONFIG.hide_enabled and "ON" or "OFF", CONFIG.hide_seconds, CONFIG.hide_min_distance_m, CONFIG.hide_crouch_mult))
-log("  dev keys: F2=de-aggro nearest  F3=hate-only  F6=read HateMap  F9=pal info  F10=dump (stripped at finalize).")
