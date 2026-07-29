@@ -36,7 +36,6 @@ local CONFIG = {
     hide_min_distance_ranged_m= 38,   -- ranged pals (in RangedList.txt): ~avg ranged reach + buffer
     hide_crouch_mult   = 0.5,         -- crouching halves both the time AND the distance
     verbose            = false,
-    monitor            = false,  -- dev: log nearest hunter each tick (extra FindAllOf; off by default)
 }
 
 -- ============================================================================
@@ -207,29 +206,7 @@ end
 -- Rebuilt every scan and pruned to only currently-present hunters (no stale growth).
 local HUNTERS = {}
 
--- log the nearest pal actively targeting the player (runs even when paused)
-local function monitorTargeting()
-    local player = FindFirstOf("PalPlayerCharacter"); if not isValid(player) then return end
-    local ploc = getLoc(player); if not ploc then return end
-    local pals = FindAllOf("PalCharacter"); if not pals then return end
-    local best, bd = nil, math.huge
-    for _, p in ipairs(pals) do
-        if isValid(p) and p ~= player then
-            local ctrl; pcall(function() ctrl = p.Controller end)
-            if isValid(ctrl) and ctrlName(ctrl):find("Wild") and tpCount(ctrl) > 0 then
-                local loc = getLoc(p); if loc then local d = dist2(loc, ploc); if d < bd then bd = d; best = p end end
-            end
-        end
-    end
-    if isValid(best) then
-        local ctrl; pcall(function() ctrl = best.Controller end)
-        log(string.format("MONITOR targeting=%s dist=%.1fm tp=%d los=%s", classNameOf(best) or "?",
-            math.sqrt(bd)/100, tpCount(ctrl), tostring(isValid(ctrl) and hasLOS(ctrl, player) or false)))
-    end
-end
-
 local function scan()
-    if CONFIG.monitor then pcall(monitorTargeting) end
     if not CONFIG.enabled then return end
     local player = FindFirstOf("PalPlayerCharacter"); if not isValid(player) then return end
     local pLevel = getLevel(player)
@@ -495,29 +472,8 @@ local function deaggroSetup(label)
     return pal, ctrl, hs, player
 end
 
--- F4: ChangeHate(player, 0)  -- §7 step 2 (clean retest)
-local function tryChangeHateZero()
-    local pal, ctrl, hs, player = deaggroSetup("F4")
-    if not hs then return end
-    log("=== F4 ChangeHate(player,0) ===")
-    hateSnapshot("BEFORE", pal, ctrl, hs)
-    local ok, e = pcall(function() hs:ChangeHate(player, 0) end)
-    log("  ChangeHate -> " .. (ok and "ok" or ("ERR " .. tostring(e))))
-    hateSnapshot("AFTER", pal, ctrl, hs)
-end
-RegisterKeyBind(Key.F4, function() ExecuteInGameThread(function() local ok,e=pcall(tryChangeHateZero); if not ok then log("F4 err "..tostring(e)) end end) end)
-
--- F5: SetActiveAI(false)  -- deactivate the whole AI (reversible via true)
-local function trySetInactive()
-    local pal, ctrl, hs = deaggroSetup("F5")
-    if not hs then return end
-    log("=== F5 SetActiveAI(false) ===")
-    hateSnapshot("BEFORE", pal, ctrl, hs)
-    local ok, e = pcall(function() ctrl:SetActiveAI(false) end)
-    log("  SetActiveAI(false) -> " .. (ok and "ok" or ("ERR " .. tostring(e))))
-    hateSnapshot("AFTER", pal, ctrl, hs)
-end
-RegisterKeyBind(Key.F5, function() ExecuteInGameThread(function() local ok,e=pcall(trySetInactive); if not ok then log("F5 err "..tostring(e)) end end) end)
+-- (F4 ChangeHate(0) and F5 SetActiveAI(false) experiments removed -- both
+--  confirmed dead ends for de-aggro; see reference §3.)
 
 -- F3: HateMap:Empty()  -- clear the whole hate map (only entry = the player).
 -- No key-matching (that's why Find/Contains/Remove-by-key failed on weakptr keys).
@@ -561,4 +517,4 @@ local rangedCount = 0; for _ in pairs(RANGED) do rangedCount = rangedCount + 1 e
 log(string.format("Predator & Stealth v8 loaded [%s]. AGGRESSIVE by default, %d passive species (edit PreyList.txt). base %dm | crouch x%.1f + %d-deg cone (crouch-only), rear x%.2f | hide %s (%ds no-LOS; %dm melee / %dm ranged[%d]; crouch x%.1f).",
     CONFIG.enabled and "ON" or "OFF", preyCount, CONFIG.base_range_m, CONFIG.crouch_mult, CONFIG.front_half_angle * 2, CONFIG.rear_mult,
     CONFIG.hide_enabled and "ON" or "OFF", CONFIG.hide_seconds, CONFIG.hide_min_distance_m, CONFIG.hide_min_distance_ranged_m, rangedCount, CONFIG.hide_crouch_mult))
-log("  F6=read.  F2=FULL de-aggro(hate+targets)  F3=hate-only  F4=ChangeHate(0)  F5=SetActiveAI(false).")
+log("  dev keys: F2=de-aggro nearest  F3=hate-only  F6=read HateMap  F9=pal info  F10=dump (stripped at finalize).")
