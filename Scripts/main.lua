@@ -14,9 +14,10 @@
 local CONFIG = {
     enabled            = true,   -- diagnostic build: auto-run so the loader logs (safe: no data = no aggro)
     base_range_m       = 12,
-    crouch_mult        = 0.4,
-    front_half_angle   = 75,   -- within this many degrees of the pal's facing = full range (its vision cone)
-    rear_mult          = 0.35, -- detection range multiplier when you're outside the cone (behind/sides)
+    crouch_mult        = 0.6,  -- crouched detection range = base x this (0.6 -> ~7.2m front)
+    front_half_angle   = 90,   -- HALF-angle of the vision cone; 90 = a 180-deg front cone.
+                               -- CROUCH-ONLY: standing detection is omnidirectional (see below).
+    rear_mult          = 0.35, -- when crouched AND outside the cone (behind/sides), range x this
     per_level_bonus    = 0.03,
     level_bonus_cap    = 1.0,
     scan_ms            = 1500,
@@ -102,6 +103,7 @@ local function getLoc(a) local v; local ok=pcall(function() v=a:K2_GetActorLocat
 local function dist2(a,b) local dx=a.x-b.x;local dy=a.y-b.y;local dz=a.z-b.z;return dx*dx+dy*dy+dz*dz end
 
 -- 1.0 if the player is within the pal's front vision cone, else rear_mult.
+-- Only consulted while the player is crouched (standing = omnidirectional).
 local function frontFactor(pal, palLoc, ploc)
     local fwd; local ok = pcall(function() fwd = pal:GetActorForwardVector() end)
     if not ok or not fwd then return 1 end
@@ -197,8 +199,11 @@ local function scan()
                     local gap = getLevel(pal) - pLevel
                     local bonus = (gap > 0) and math.min(gap * CONFIG.per_level_bonus, CONFIG.level_bonus_cap) or 0
                     local rangeM = CONFIG.base_range_m * (1 + bonus)
-                    if crouched then rangeM = rangeM * CONFIG.crouch_mult end
-                    if loc then rangeM = rangeM * frontFactor(pal, loc, ploc) end   -- behind = harder to notice
+                    if crouched then
+                        rangeM = rangeM * CONFIG.crouch_mult
+                        -- vision cone only matters while crouched: standing = detected from any direction
+                        if loc then rangeM = rangeM * frontFactor(pal, loc, ploc) end
+                    end
                     local rangeCm = rangeM * 100
                     if loc and dist2(loc, ploc) <= rangeCm * rangeCm then
                         if not (CONFIG.skip_sleeping and isSleeping(ctrl)) then
@@ -245,8 +250,10 @@ local function info()
     local gap = getLevel(nearest) - pLevel
     local bonus = (gap > 0) and math.min(gap * CONFIG.per_level_bonus, CONFIG.level_bonus_cap) or 0
     local rangeM = CONFIG.base_range_m * (1 + bonus)
-    if crouched then rangeM = rangeM * CONFIG.crouch_mult end
-    local nloc = getLoc(nearest); if nloc then rangeM = rangeM * frontFactor(nearest, nloc, ploc) end
+    if crouched then
+        rangeM = rangeM * CONFIG.crouch_mult
+        local nloc = getLoc(nearest); if nloc then rangeM = rangeM * frontFactor(nearest, nloc, ploc) end
+    end
     log(string.format("INFO %s  key=%s  dist=%.1fm  prey=%s (hp=%s resp=%s)  crouched=%s  ourAggroRange=%.1fm  LOS=%s",
         classNameOf(nearest) or "?", tostring(key), distM, tostring(isPrey(nearest)),
         d and tostring(d.hp) or "?", d and d.resp or "?", tostring(crouched), rangeM, tostring(los)))
@@ -468,6 +475,6 @@ RegisterKeyBind(Key.F8, function() CONFIG.enabled = not CONFIG.enabled; log("Pre
 RegisterKeyBind(Key.F7, function() CONFIG.enabled = false; log("scan PAUSED (F8 resumes). (F7 no longer touches hate -- ChangeHate-negative backfires.)") end)
 
 local preyCount = 0; for _ in pairs(PREY) do preyCount = preyCount + 1 end
-log(string.format("Predator & Stealth v7 loaded [%s]. AGGRESSIVE by default, %d passive species (edit PreyList.txt). base %dm, crouch x%.1f, rear x%.2f (cone %d deg).",
-    CONFIG.enabled and "ON" or "OFF", preyCount, CONFIG.base_range_m, CONFIG.crouch_mult, CONFIG.rear_mult, CONFIG.front_half_angle))
+log(string.format("Predator & Stealth v7 loaded [%s]. AGGRESSIVE by default, %d passive species (edit PreyList.txt). base %dm | crouch x%.1f + %d-deg cone (crouch-only), rear x%.2f.",
+    CONFIG.enabled and "ON" or "OFF", preyCount, CONFIG.base_range_m, CONFIG.crouch_mult, CONFIG.front_half_angle * 2, CONFIG.rear_mult))
 log("  F6=read.  F2=FULL de-aggro(hate+targets)  F3=hate-only  F4=ChangeHate(0)  F5=SetActiveAI(false).")
