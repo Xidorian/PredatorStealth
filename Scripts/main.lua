@@ -388,3 +388,43 @@ local preyCount = 0; for _ in pairs(PREY) do preyCount = preyCount + 1 end
 log(string.format("Predators & Stealth v1.0.0 loaded [%s]. AGGRESSIVE by default, %d passive species (edit PreyList.txt). base %dm | crouch x%.1f + %d-deg cone (crouch-only), rear x%.2f | hide %s (%ds no-LOS, >%dm, crouch x%.1f).",
     CONFIG.enabled and "ON" or "OFF", preyCount, CONFIG.base_range_m, CONFIG.crouch_mult, CONFIG.front_half_angle * 2, CONFIG.rear_mult,
     CONFIG.hide_enabled and "ON" or "OFF", CONFIG.hide_seconds, CONFIG.hide_min_distance_m, CONFIG.hide_crouch_mult))
+
+-- ===== DEV PLAYER-PROPERTY PROBE -- BRANCH ONLY, STRIP BEFORE RELEASE ========
+-- Hunt for a player-side detectability / noise / stealth variable (the elegant
+-- one-value lever). Press F10 STANDING, then again CROUCHED, then again SPRINTING;
+-- diff the dumps -- any scalar that CHANGES with stance is the lever we'd drive.
+-- Runs regardless of CONFIG.enabled. Player pawn is stable (not streaming), so a
+-- one-shot property read is low-risk. Logs scalars as PLAYERPROP, components as
+-- PLAYEROBJ (candidates to probe next if the lever isn't on the pawn itself).
+local function dumpPlayerProps()
+    local p = FindFirstOf("PalPlayerCharacter")
+    if not isValid(p) then log("PLAYERPROBE: no player"); return end
+    local crouched = "?"; pcall(function() crouched = tostring(p.bIsCrouched) end)
+    log("PLAYERPROBE ==== dump (crouched=" .. crouched .. ") ====")
+    local cls; pcall(function() cls = p:GetClass() end)
+    local depth = 0
+    while cls and cls:IsValid() and depth < 8 do
+        local cname = "?"; pcall(function() cname = cls:GetFName():ToString() end)
+        log("PLAYERPROBE -- " .. cname .. " --")
+        pcall(function()
+            cls:ForEachProperty(function(prop)
+                local name; pcall(function() name = prop:GetFName():ToString() end)
+                if not name then return end
+                local out
+                pcall(function()
+                    local v = p[name]
+                    local t = type(v)
+                    if t == "number" or t == "boolean" then out = "PLAYERPROP " .. name .. " = " .. tostring(v)
+                    elseif t == "userdata" then out = "PLAYEROBJ  " .. name end
+                end)
+                if out then log(out) end
+            end)
+        end)
+        pcall(function() cls = cls:GetSuperStruct() end)
+        depth = depth + 1
+    end
+    log("PLAYERPROBE ==== end ====")
+end
+pcall(function() RegisterKeyBind(Key.F10, dumpPlayerProps) end)
+log("PLAYERPROBE: press F10 while standing, then crouched, to dump player props")
+-- ===== END DEV PLAYER-PROPERTY PROBE =========================================
