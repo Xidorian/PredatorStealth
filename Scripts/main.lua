@@ -389,52 +389,5 @@ log(string.format("Predators & Stealth v1.0.0 loaded [%s]. AGGRESSIVE by default
     CONFIG.enabled and "ON" or "OFF", preyCount, CONFIG.base_range_m, CONFIG.crouch_mult, CONFIG.front_half_angle * 2, CONFIG.rear_mult,
     CONFIG.hide_enabled and "ON" or "OFF", CONFIG.hide_seconds, CONFIG.hide_min_distance_m, CONFIG.hide_crouch_mult))
 
--- ===== DEV PLAYER-PROPERTY PROBE -- BRANCH ONLY, STRIP BEFORE RELEASE ========
--- Hunt for a player-side detectability / noise / stealth variable (the elegant
--- one-value lever). Press F10 STANDING, then again CROUCHED, then again SPRINTING;
--- diff the dumps -- any scalar that CHANGES with stance is the lever we'd drive.
--- Runs regardless of CONFIG.enabled. Player pawn is stable (not streaming), so a
--- one-shot property read is low-risk. Logs scalars as PLAYERPROP, components as
--- PLAYEROBJ (candidates to probe next if the lever isn't on the pawn itself).
-local function dumpObjScalars(obj, tag)
-    local cls; pcall(function() cls = obj:GetClass() end)
-    local depth = 0
-    while cls and cls:IsValid() and depth < 8 do
-        pcall(function()
-            cls:ForEachProperty(function(prop)
-                local name; pcall(function() name = prop:GetFName():ToString() end)
-                if not name then return end
-                pcall(function()
-                    local v = obj[name]
-                    local t = type(v)
-                    if t == "number" or t == "boolean" then
-                        log("PLAYERPROP " .. tag .. "." .. name .. " = " .. tostring(v))
-                    end
-                end)
-            end)
-        end)
-        pcall(function() cls = cls:GetSuperStruct() end)
-        depth = depth + 1
-    end
-end
--- v2: pawn only exposes bIsCrouched/BaseEyeHeight by stance; the noise/detection
--- lever (if any) lives in a component. Dump the prime suspects' scalars too --
--- BP_PlayerSoundEmitterComponent (player NOISE) is the top lead.
-local PROBE_COMPS = { "BP_PlayerSoundEmitterComponent", "AroundInfoCollectorComponent",
-                      "CharacterMovement", "ActionComponent", "CharacterParameterComponent" }
-local function dumpPlayerProps()
-    local p = FindFirstOf("PalPlayerCharacter")
-    if not isValid(p) then log("PLAYERPROBE: no player"); return end
-    local crouched = "?"; pcall(function() crouched = tostring(p.bIsCrouched) end)
-    log("PLAYERPROBE ==== dump (crouched=" .. crouched .. ") ====")
-    dumpObjScalars(p, "pawn")
-    for _, cn in ipairs(PROBE_COMPS) do
-        local c; pcall(function() c = p[cn] end)
-        if isValid(c) then dumpObjScalars(c, cn)
-        else log("PLAYERPROBE (component " .. cn .. " missing/invalid)") end
-    end
-    log("PLAYERPROBE ==== end ====")
-end
-pcall(function() RegisterKeyBind(Key.F10, dumpPlayerProps) end)
-log("PLAYERPROBE: press F10 while standing, then crouched, to dump player props")
--- ===== END DEV PLAYER-PROPERTY PROBE =========================================
+-- (DEV player-property probe removed -- it confirmed the noise emitter is flags +
+--  logic with no settable noise scalar. Next lever is data-side: pal HearingRate.)
