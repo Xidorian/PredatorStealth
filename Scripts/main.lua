@@ -48,7 +48,7 @@ local CONFIG = {
     hide_seconds       = 7,
     hide_min_distance_m = 20,
     hide_crouch_mult   = 0.5,         -- crouching halves both the time AND the distance
-    verbose            = false,
+    verbose            = true,        -- DEV/branch: on for perf timing. Set false before release.
 }
 
 -- ============================================================================
@@ -197,6 +197,43 @@ local function rosterDrop(id)
     if ROSTER[id] then ROSTER[id] = nil; rosterCount = rosterCount - 1 end
 end
 
+-- ===== DEV PROBE -- BRANCH ONLY, STRIP BEFORE RELEASE ========================
+-- One-shot reflection dump for the fully-event-driven ("extended hooks") work.
+-- The first time the scan resolves a live WILD AI controller, walk its class
+-- hierarchy and log every UFunction name so we can pick a hookable AI decision
+-- point (flee-vs-fight / target acquisition) to hook instead of polling.
+-- Self-disables after one firing. If ForEachFunction isn't in this UE4SS Lua
+-- build, it says so and we fall back to the Ctrl+H CXX header dump.
+local PROBE = { enabled = true, done = false }
+local function probeController(ctrl, pal)
+    if not PROBE.enabled or PROBE.done then return end
+    PROBE.done = true
+    pcall(function()
+        log("PROBE ==== wild controller UFunction dump ====")
+        log("PROBE pal class: " .. tostring(classNameOf(pal)))
+        local cls; pcall(function() cls = ctrl:GetClass() end)
+        local depth = 0
+        while cls and cls:IsValid() and depth < 12 do
+            local full; pcall(function() full = cls:GetFullName() end)
+            log("PROBE --- class[" .. depth .. "]: " .. tostring(full) .. " ---")
+            local okF = pcall(function()
+                cls:ForEachFunction(function(fn)
+                    local n; pcall(function() n = fn:GetFName():ToString() end)
+                    if n then log("PROBE fn: " .. n) end
+                end)
+            end)
+            if not okF then
+                log("PROBE ForEachFunction unavailable/failed here -- use Ctrl+H CXX header dump instead")
+                break
+            end
+            local nextCls; pcall(function() nextCls = cls:GetSuperStruct() end)
+            cls = nextCls; depth = depth + 1
+        end
+        log("PROBE ==== end dump ====")
+    end)
+end
+-- ===== END DEV PROBE =========================================================
+
 local scanTick = 0
 
 local function scan()
@@ -228,6 +265,7 @@ local function scan()
                 if isValid(ctrl) and ctrlName(ctrl):find("Wild") then e.ctrl = ctrl else ctrl = nil end
             end
             if ctrl then
+                probeController(ctrl, pal)   -- DEV PROBE (branch only): one-shot function dump
                 local tp = tpCount(ctrl)
                 if tp > 0 then
                     -- HIDE-TO-ESCAPE: this pal is hunting the player.
