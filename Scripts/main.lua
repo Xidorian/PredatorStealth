@@ -33,6 +33,12 @@ local CONFIG = {
                                  -- so keep it high enough to grab everything with LOS in one tick.
     require_los        = true,
     skip_sleeping      = true,
+    -- PERF: the scan walks a cached ROSTER (built at load + kept current by
+    -- NotifyOnNewObject), NOT FindAllOf every tick -- that per-tick whole-array
+    -- walk + per-pal reflection was the traversal-stutter cause. As a safety net
+    -- we still do ONE full FindAllOf reconcile every N scans to pick up anything
+    -- the spawn notification missed. 0 disables the reconcile entirely.
+    reseed_every_scans = 8,
     -- HIDE-TO-ESCAPE: a pal hunting you gives up after hide_seconds with no
     -- line-of-sight AND while it's at least hide_min_distance_m away (so a
     -- point-blank pal won't lose you behind a thin obstacle). LOS already stops a
@@ -160,9 +166,38 @@ local function clearAggro(ctrl)
     pcall(function() ctrl.TargetPlayers:Empty() end)
 end
 
--- hide-to-escape state: id -> consecutive scan ticks a hunter has had NO line-of-sight.
--- Rebuilt every scan and pruned to only currently-present hunters (no stale growth).
-local HUNTERS = {}
+-- ============================================================================
+--  ROSTER (event-driven). We no longer FindAllOf every tick. Each pal is added
+--  ONCE -- at load (seed sweep) or as it streams in (NotifyOnNewObject) -- and
+--  its class + prey classification are resolved once, then cached. The scan
+--  timer walks this cached roster instead of the whole UObject array, which is
+--  what removes the per-frame traversal stall. See docs/roster-redesign.md.
+--
+--  entry = { pal=<userdata>, cls=<string>, prey=<bool>,
+--            ctrl=<userdata|nil>,   -- wild AI controller, resolved lazily (it
+--                                   --   attaches a beat after the character spawns)
+--            noLOS=<int> }          -- consecutive no-LOS scan ticks (hide-to-escape) }
+-- ============================================================================
+local ROSTER = {}          -- id -> entry
+local rosterCount = 0
+
+-- add a pal to the roster, resolving its class + prey flag exactly once. Skips
+-- the player pawn and anything already tracked. Safe to call from the spawn
+-- notification and from the reconcile sweep alike (idempotent per id).
+local function rosterAdd(pal)
+    if not isValid(pal) then return end
+    local id = objId(pal); if not id or ROSTER[id] then return end
+    local cls = classNameOf(pal)
+    if not cls or cls:find("Player") then return end       -- never track the player
+    ROSTER[id] = { pal = pal, cls = cls, prey = isPrey(cls), ctrl = nil, noLOS = 0 }
+    rosterCount = rosterCount + 1
+end
+
+local function rosterDrop(id)
+    if ROSTER[id] then ROSTER[id] = nil; rosterCount = rosterCount - 1 end
+end
+
+local scanTick = 0
 
 local function scan()
     if not CONFIG.enabled then return end
@@ -171,44 +206,53 @@ local function scan()
     local crouched = false; pcall(function() crouched = player.bIsCrouched end)
     local ploc = getLoc(player); if not ploc then return end
 
-    local pals = FindAllOf("PalCharacter"); if not pals then return end
+    scanTick = scanTick + 1
+    -- safety-net reconcile: pick up anything NotifyOnNewObject missed. Far cheaper
+    -- than the old every-tick sweep, and rosterAdd is a no-op for pals already known.
+    if CONFIG.reseed_every_scans > 0 and (scanTick % CONFIG.reseed_every_scans) == 0 then
+        local pals = FindAllOf("PalCharacter")
+        if pals then for _, p in ipairs(pals) do rosterAdd(p) end end
+    end
+
     local hide_ticks = math.max(1, math.floor(CONFIG.hide_seconds * 1000 / CONFIG.scan_ms + 0.5))
     local aggroed = 0
-    local seen = {}   -- hunter ids present this tick (for pruning HUNTERS)
-    for _, pal in ipairs(pals) do
-        if isValid(pal) and pal ~= player then
-            local cls = classNameOf(pal)
-            if cls and not cls:find("Player") then
-                local ctrl; pcall(function() ctrl = pal.Controller end)
-                if isValid(ctrl) and ctrlName(ctrl):find("Wild") then
-                    local tp = tpCount(ctrl)
-                    if tp > 0 then
-                        -- HIDE-TO-ESCAPE: this pal is hunting the player.
-                        if CONFIG.hide_enabled then
-                            local id = objId(pal)
-                            if id then
-                                seen[id] = true
-                                local loc = getLoc(pal)
-                                local gateM = crouched and (CONFIG.hide_min_distance_m * CONFIG.hide_crouch_mult) or CONFIG.hide_min_distance_m
-                                local minCm2 = (gateM * 100) ^ 2
-                                local far = loc and (dist2(loc, ploc) >= minCm2)
-                                -- only "lose" you when it CAN'T see you AND you've put distance between you
-                                if (not hasLOS(ctrl, player)) and far then
-                                    local needed = crouched and math.max(1, math.ceil(hide_ticks * CONFIG.hide_crouch_mult)) or hide_ticks
-                                    local n = (HUNTERS[id] or 0) + 1
-                                    HUNTERS[id] = n
-                                    if n >= needed then
-                                        clearAggro(ctrl)                  -- out of sight + far long enough: give up
-                                        HUNTERS[id] = nil; seen[id] = nil
-                                        log("hide-escape: " .. (cls or "?") .. " lost you")
-                                    end
-                                else
-                                    HUNTERS[id] = 0                       -- sees you, or too close: not losing you
-                                end
+    for id, e in pairs(ROSTER) do
+        local pal = e.pal
+        if not isValid(pal) then
+            rosterDrop(id)                                  -- despawned / streamed out -> forget it
+        else
+            -- resolve + cache the wild AI controller lazily; it can attach after spawn.
+            local ctrl = e.ctrl
+            if not isValid(ctrl) then
+                ctrl = nil; pcall(function() ctrl = pal.Controller end)
+                if isValid(ctrl) and ctrlName(ctrl):find("Wild") then e.ctrl = ctrl else ctrl = nil end
+            end
+            if ctrl then
+                local tp = tpCount(ctrl)
+                if tp > 0 then
+                    -- HIDE-TO-ESCAPE: this pal is hunting the player.
+                    if CONFIG.hide_enabled then
+                        local loc = getLoc(pal)
+                        local gateM = crouched and (CONFIG.hide_min_distance_m * CONFIG.hide_crouch_mult) or CONFIG.hide_min_distance_m
+                        local minCm2 = (gateM * 100) ^ 2
+                        local far = loc and (dist2(loc, ploc) >= minCm2)
+                        -- only "lose" you when it CAN'T see you AND you've put distance between you
+                        if (not hasLOS(ctrl, player)) and far then
+                            local needed = crouched and math.max(1, math.ceil(hide_ticks * CONFIG.hide_crouch_mult)) or hide_ticks
+                            e.noLOS = e.noLOS + 1
+                            if e.noLOS >= needed then
+                                clearAggro(ctrl)             -- out of sight + far long enough: give up
+                                e.noLOS = 0
+                                log("hide-escape: " .. (e.cls or "?") .. " lost you")
                             end
+                        else
+                            e.noLOS = 0                      -- sees you, or too close: not losing you
                         end
-                    elseif not isPrey(cls) and aggroed < CONFIG.max_aggros_per_scan then
-                        -- ACQUIRE: not yet hunting, aggressive species -> aggro if in range + LOS
+                    end
+                else
+                    e.noLOS = 0                              -- not hunting -> hide counter irrelevant
+                    if not e.prey and aggroed < CONFIG.max_aggros_per_scan then
+                        -- ACQUIRE: aggressive species not yet hunting -> aggro if in range + LOS
                         local loc = getLoc(pal)
                         local gap = getLevel(pal) - pLevel
                         local bonus = (gap > 0) and math.min(gap * CONFIG.per_level_bonus, CONFIG.level_bonus_cap) or 0
@@ -224,7 +268,7 @@ local function scan()
                                 if (not CONFIG.require_los) or hasLOS(ctrl, player) then
                                     pcall(function() ctrl:ForceBattleStartToTarget(player) end)
                                     aggroed = aggroed + 1
-                                    vlog("aggro " .. (cls or "?") .. string.format(" (gap %+d, %.0fm%s)", gap, rangeM, crouched and ", crouched" or ""))
+                                    vlog("aggro " .. (e.cls or "?") .. string.format(" (gap %+d, %.0fm%s)", gap, rangeM, crouched and ", crouched" or ""))
                                 end
                             end
                         end
@@ -233,13 +277,36 @@ local function scan()
             end
         end
     end
-    -- prune trackers for hunters no longer present (despawned / left / de-aggro'd) -> no stale growth
-    for id in pairs(HUNTERS) do if not seen[id] then HUNTERS[id] = nil end end
     if aggroed > 0 then vlog("scan aggroed " .. aggroed) end
 end
 
+-- Keep the roster current as pals stream in. NotifyOnNewObject only fires for
+-- objects created AFTER this call, so the load-time seed sweep below is required,
+-- not optional. Base-class registration also catches BP_*_C subclass instances.
+pcall(function()
+    NotifyOnNewObject("/Script/Pal.PalCharacter", function(pal) pcall(rosterAdd, pal) end)
+end)
+
+-- one-time seed of everything already loaded when the script (re)loads.
+ExecuteInGameThread(function()
+    local ok = pcall(function()
+        local pals = FindAllOf("PalCharacter")
+        if pals then for _, p in ipairs(pals) do rosterAdd(p) end end
+    end)
+    log(string.format("roster: event-driven [seed=%d, NotifyOnNewObject on PalCharacter, reconcile every %d scans]%s",
+        rosterCount, CONFIG.reseed_every_scans, ok and "" or " (seed sweep errored)"))
+end)
+
 LoopAsync(CONFIG.scan_ms, function()
-    ExecuteInGameThread(function() local ok,e=pcall(scan); if not ok then log("scan err " .. tostring(e)) end end)
+    ExecuteInGameThread(function()
+        local t0; pcall(function() t0 = os.clock() end)
+        local ok, e = pcall(scan)
+        if not ok then log("scan err " .. tostring(e)) end
+        if CONFIG.verbose and t0 then
+            local dt; pcall(function() dt = (os.clock() - t0) * 1000 end)
+            if dt then log(string.format("scan %.2fms, roster=%d, tick=%d", dt, rosterCount, scanTick)) end
+        end
+    end)
     return false
 end)
 

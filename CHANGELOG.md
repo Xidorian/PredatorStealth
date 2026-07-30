@@ -1,8 +1,20 @@
 # Changelog — Predators & Stealth
 
 ## Unreleased (in testing)
-Live-testing a fix for aggressive Pals fleeing instead of fighting. Not yet
-packaged or published.
+Live-testing two fixes: aggressive Pals fleeing instead of fighting, and
+traversal stutter on high-refresh setups. Not yet packaged or published.
+
+**Performance**
+- **Event-driven roster replaces the per-tick world sweep.** The scan used to call
+  `FindAllOf("PalCharacter")` and re-resolve every Pal's class by reflection on
+  every tick — a whole-array walk that blocked the game thread and grew heavier as
+  Pals streamed in while moving, surfacing as repeated freezes on a 3440×1440@120
+  setup. Pals are now added once (at load, then via `NotifyOnNewObject` as they
+  spawn), their class + prey flag cached, and the scan walks that cached roster
+  instead. A cheap full reconcile every `reseed_every_scans` ticks (default 8)
+  catches anything the spawn notification missed. No behavior change — range,
+  line-of-sight, crouch cone and hide-to-escape all work exactly as before. Scan
+  duration is logged when `verbose` is on.
 
 **Changed**
 - **Acquisition range `base_range_m` 12 → 30.** Aggressive ("flee-then-fight")
