@@ -63,18 +63,16 @@ return later as an optional add-on.
 
 ## Installation
 1. Install **UE4SS** and **PalSchema** for Palworld if you haven't.
-2. From this download:
-   - Put the **`PredatorsAndStealth`** folder (the data patch) into
-     `...\UE4SS\Mods\PalSchema\mods\` — so you have
-     `...\PalSchema\mods\PredatorsAndStealth\raw\aggressive.jsonc`.
-   - Put the **`PredatorsandStealth`** UE4SS mod folder into `...\UE4SS\Mods\` — so
-     you have `...\UE4SS\Mods\PredatorsandStealth\Scripts\main.lua`. Enable it
-     (`enabled.txt` is included; if your setup uses `mods.txt`, add
-     `PredatorsandStealth : 1`).
-3. Launch the game. (After any edit to the data patch, fully restart the game.)
+2. **Extract this zip into your UE4SS `Mods` folder.** It drops in two things:
+   - `Mods\PredatorStealth\` — the mod itself (the hide-to-escape script).
+   - `Mods\PalSchema\mods\PredatorStealth\` — the aggression data patch (merges
+     into your existing PalSchema install; it won't touch PalSchema's own files).
+3. Enable the mod: the included `enabled.txt` auto-enables it on standard RE-UE4SS;
+   on the Steam-Workshop UE4SS build add `PredatorStealth : 1` to `Mods\mods.txt`.
+4. Launch the game. (Fully restart after any edit to the data patch.)
 
 ## Customizing which Pals are hostile / how they sense you
-Everything lives in **`PalSchema\mods\PredatorsAndStealth\raw\aggressive.jsonc`** —
+Everything lives in **`PalSchema\mods\PredatorStealth\raw\aggressive.jsonc`** —
 one line per Pal, editable in any text editor:
 - **Make a Pal passive:** delete its line (it reverts to vanilla), or set its
   `AIResponse` to `Friendly`.
@@ -87,7 +85,7 @@ one line per Pal, editable in any text editor:
 The "prey" that stay passive are simply the species **not** in that file (Lamball,
 Cattiva, Chikipi, Vixy, Melpaca, Pengullet, and friends).
 
-Hide-to-escape timing is in `PredatorsandStealth\Scripts\main.lua` (`CONFIG` block):
+Hide-to-escape timing is in `PredatorStealth\Scripts\main.lua` (`CONFIG` block):
 `hide_seconds`, `hide_min_distance_m`, `hide_crouch_mult`.
 
 ## Compatibility
