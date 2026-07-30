@@ -18,11 +18,12 @@
 
 local CONFIG = {
     hide_enabled        = true,
-    hide_seconds        = 7,       -- no-LOS time before a far pursuer gives up
+    hide_seconds        = 4,       -- no-LOS time before a FAR pursuer (>=min_distance) gives up
+    hide_close_mult     = 1.5,     -- close pursuers (<min_distance) take this much longer -> ~6s
     hide_min_distance_m = 20,      -- must be at least this far (point-blank never loses you)
     hide_crouch_mult    = 0.5,     -- crouching halves BOTH the time and the distance
     tick_ms             = 1000,    -- how often we re-check the (small) hunter list
-    verbose             = false,   -- set true to log each hide-to-escape de-aggro
+    verbose             = false,   -- set true to log each pursuer's give-up countdown
 }
 
 local function log(m) print("[PDST] " .. m .. "\n") end
@@ -32,6 +33,7 @@ local function isValid(o) return o ~= nil and type(o) == "userdata" and o.IsVali
 local function objId(o) local n; pcall(function() n = o:GetFName():ToString() end); return n end
 local function unwrap(o) local r = o; pcall(function() r = o:get() end); return r end
 local function getPawn(ctrl) local p; pcall(function() p = ctrl:K2_GetPawn() end); return p end
+local function classNameOf(a) local n; pcall(function() n = a:GetClass():GetFName():ToString() end); return n end
 local function getLoc(a) local v; local ok=pcall(function() v=a:K2_GetActorLocation() end); if ok and v then local x,y,z; pcall(function() x=v.X;y=v.Y;z=v.Z end); if x then return {x=x,y=y,z=z} end end end
 local function dist2(a,b) local dx=a.x-b.x;local dy=a.y-b.y;local dz=a.z-b.z;return dx*dx+dy*dy+dz*dz end
 local function tpCount(ctrl) local n=0; pcall(function() n=ctrl.TargetPlayers:GetArrayNum() end); return n end
@@ -48,16 +50,16 @@ end
 -- the aggro hook (event), drained by the tick. Small -- only active hunters, so no scan.
 local WATCH = {}
 
--- The aggro event: a pal added the player as an enemy target. MINIMAL work here --
--- just record the controller (it's valid mid-call); the tick does the LOS logic.
+-- The aggro event: a pal targeted the player. MINIMAL work here -- just record the
+-- controller (valid mid-call); the tick does the LOS logic.
+local function watchAdd(self)
+    local ctrl = unwrap(self); if not isValid(ctrl) then return end
+    local id = objId(ctrl)
+    if id and not WATCH[id] then WATCH[id] = { ctrl = ctrl, noLOS = 0 }; vlog("watch+ " .. id) end
+end
 if CONFIG.hide_enabled then
     local ok = pcall(function()
-        RegisterHook("/Script/Pal.PalAIController:AddTargetPlayer_ForEnemy", function(self)
-            local ctrl = unwrap(self)
-            if not isValid(ctrl) then return end
-            local id = objId(ctrl)
-            if id and not WATCH[id] then WATCH[id] = { ctrl = ctrl, noLOS = 0 } end
-        end)
+        RegisterHook("/Script/Pal.PalAIController:AddTargetPlayer_ForEnemy", function(self) watchAdd(self) end)
     end)
     log("hide-to-escape: AddTargetPlayer_ForEnemy hook " .. (ok and "registered" or "FAILED"))
 end
@@ -67,29 +69,39 @@ local function hideTick()
     local player = FindFirstOf("PalPlayerCharacter"); if not isValid(player) then return end
     local ploc = getLoc(player); if not ploc then return end
     local crouched = false; pcall(function() crouched = player.bIsCrouched end)
-    local hide_ticks = math.max(1, math.floor(CONFIG.hide_seconds * 1000 / CONFIG.tick_ms + 0.5))
+    local base = math.max(1, math.floor(CONFIG.hide_seconds * 1000 / CONFIG.tick_ms + 0.5))
+    local n = 0
     for id, e in pairs(WATCH) do
         local ctrl = e.ctrl
         if not isValid(ctrl) then
-            WATCH[id] = nil                                   -- despawned
+            WATCH[id] = nil; vlog("drop " .. id .. " despawned")
         elseif tpCount(ctrl) == 0 then
-            WATCH[id] = nil                                   -- gave up on its own
+            WATCH[id] = nil; vlog("drop " .. id .. " tp=0 (dropped target itself)")
         else
-            local pawn = getPawn(ctrl); local loc = pawn and getLoc(pawn)
+            n = n + 1
+            if not e.cls then e.cls = classNameOf(getPawn(ctrl)) end
+            local loc = getLoc(getPawn(ctrl))
+            local d = loc and (math.sqrt(dist2(loc, ploc)) / 100) or -1     -- metres
             local gateM = crouched and (CONFIG.hide_min_distance_m * CONFIG.hide_crouch_mult) or CONFIG.hide_min_distance_m
-            local far = loc and (dist2(loc, ploc) >= (gateM * 100) ^ 2)
-            if (not hasLOS(ctrl, player)) and far then
-                local needed = crouched and math.max(1, math.ceil(hide_ticks * CONFIG.hide_crouch_mult)) or hide_ticks
+            local far = d >= 0 and d >= gateM
+            if not hasLOS(ctrl, player) then
+                -- No line of sight -> give up. Far = base time; close = a bit longer, but it STILL
+                -- gives up (a searching pal circling within range no longer stays mad forever).
+                local needed = far and base or math.max(base + 1, math.ceil(base * CONFIG.hide_close_mult))
+                if crouched then needed = math.max(1, math.ceil(needed * CONFIG.hide_crouch_mult)) end
                 e.noLOS = e.noLOS + 1
+                vlog(string.format("hunt %s noLOS %d/%d d=%.0fm", e.cls or "?", e.noLOS, needed, d))
                 if e.noLOS >= needed then
                     clearAggro(ctrl); WATCH[id] = nil
-                    vlog("hide-escape: a pursuer lost you")
+                    vlog("hide-escape: " .. (e.cls or "?") .. " lost you")
                 end
             else
-                e.noLOS = 0                                    -- sees you, or too close
+                if e.noLOS > 0 then vlog(string.format("hunt %s SEES you d=%.0fm (reset)", e.cls or "?", d)) end
+                e.noLOS = 0
             end
         end
     end
+    if n > 0 then vlog("watch size=" .. n) end
 end
 
 LoopAsync(CONFIG.tick_ms, function()
