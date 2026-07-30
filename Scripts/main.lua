@@ -16,12 +16,13 @@
 
 local CONFIG = {
     enabled            = true,   -- master on/off switch
-    base_range_m       = 30,     -- MUST meet/exceed vanilla's notice-and-flee range, or
-                                 -- "flee-then-fight" pals spot you and run BEFORE we can force
-                                 -- them to fight. LOS-gated (require_los), so a pal only aggros
-                                 -- when it can actually see you -- exactly when vanilla would
-                                 -- otherwise make it flee. If pals still run, raise this.
-    crouch_mult        = 0.6,  -- crouched detection range = base x this (0.6 -> ~18m front at base 30)
+    base_range_m       = 20,     -- Compromise between the published 12 and the 30 we bumped to.
+                                 -- 30 was to out-reach vanilla's notice-and-flee range so
+                                 -- "flee-then-fight" pals get pulled into battle before they run.
+                                 -- LOS-gating (require_los) means a pal only aggros when it can
+                                 -- actually see you, so 30 grabbed from uncomfortably far. Pulled
+                                 -- back to 20. If flee-then-fight pals start running again, nudge up.
+    crouch_mult        = 0.6,  -- crouched detection range = base x this (0.6 -> ~12m front at base 20)
     front_half_angle   = 90,   -- HALF-angle of the vision cone; 90 = a 180-deg front cone.
                                -- CROUCH-ONLY: standing detection is omnidirectional (see below).
     rear_mult          = 0.35, -- when crouched AND outside the cone (behind/sides), range x this
@@ -334,6 +335,40 @@ ExecuteInGameThread(function()
     log(string.format("roster: event-driven [seed=%d, NotifyOnNewObject on PalCharacter, reconcile every %d scans]%s",
         rosterCount, CONFIG.reseed_every_scans, ok and "" or " (seed sweep errored)"))
 end)
+
+-- ===== DEV STUTTER METER -- BRANCH ONLY, STRIP BEFORE RELEASE ================
+-- Detects game-thread hitches independently of our scan. A fast sampler runs ON
+-- the game thread every sample_ms; when a frame stalls, the queued sample fires
+-- late and the measured wall-clock gap spikes. Reports the worst gap + how many
+-- hitches per window -- a number you can compare between builds / machines even
+-- when the stutter is too subtle to feel. os.clock() is wall-clock on Windows.
+local STUTTER = { enabled = true, sample_ms = 50, hitch_ms = 100, window = 100,
+                  last = nil, worst = 0, hitches = 0, n = 0, ok = true }
+if STUTTER.enabled then
+    LoopAsync(STUTTER.sample_ms, function()
+        ExecuteInGameThread(function()
+            if not STUTTER.ok then return end
+            local now; pcall(function() now = os.clock() end)
+            if not now then STUTTER.ok = false; log("stutter-meter: os.clock unavailable, disabled"); return end
+            now = now * 1000
+            if STUTTER.last then
+                local dt = now - STUTTER.last
+                STUTTER.n = STUTTER.n + 1
+                if dt > STUTTER.worst then STUTTER.worst = dt end
+                if dt > STUTTER.hitch_ms then STUTTER.hitches = STUTTER.hitches + 1 end
+                if STUTTER.n >= STUTTER.window then
+                    log(string.format("stutter: worst %.0fms | hitches>%dms=%d/%d (~%.0fs window)",
+                        STUTTER.worst, STUTTER.hitch_ms, STUTTER.hitches, STUTTER.n,
+                        STUTTER.n * STUTTER.sample_ms / 1000))
+                    STUTTER.worst = 0; STUTTER.hitches = 0; STUTTER.n = 0
+                end
+            end
+            STUTTER.last = now
+        end)
+        return false
+    end)
+end
+-- ===== END DEV STUTTER METER =================================================
 
 LoopAsync(CONFIG.scan_ms, function()
     ExecuteInGameThread(function()
