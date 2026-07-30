@@ -16,15 +16,21 @@
 
 local CONFIG = {
     enabled            = true,   -- master on/off switch
-    base_range_m       = 12,
-    crouch_mult        = 0.6,  -- crouched detection range = base x this (0.6 -> ~7.2m front)
+    base_range_m       = 30,     -- MUST meet/exceed vanilla's notice-and-flee range, or
+                                 -- "flee-then-fight" pals spot you and run BEFORE we can force
+                                 -- them to fight. LOS-gated (require_los), so a pal only aggros
+                                 -- when it can actually see you -- exactly when vanilla would
+                                 -- otherwise make it flee. If pals still run, raise this.
+    crouch_mult        = 0.6,  -- crouched detection range = base x this (0.6 -> ~18m front at base 30)
     front_half_angle   = 90,   -- HALF-angle of the vision cone; 90 = a 180-deg front cone.
                                -- CROUCH-ONLY: standing detection is omnidirectional (see below).
     rear_mult          = 0.35, -- when crouched AND outside the cone (behind/sides), range x this
     per_level_bonus    = 0.03,
     level_bonus_cap    = 1.0,
     scan_ms            = 1500,
-    max_aggros_per_scan= 4,      -- safety: never force more than this per tick
+    max_aggros_per_scan= 8,      -- safety: never force more than this per tick. With the wider
+                                 -- range, overflow past this cap gets a free scan to start fleeing,
+                                 -- so keep it high enough to grab everything with LOS in one tick.
     require_los        = true,
     skip_sleeping      = true,
     -- HIDE-TO-ESCAPE: a pal hunting you gives up after hide_seconds with no
