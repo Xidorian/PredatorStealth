@@ -10,10 +10,10 @@
 --      Fed by a HOOK on the "pal targeted the player" event -> a tiny watch-list
 --      of only the pals actually hunting you. NO world scan (that was the stutter).
 --
---    * LEVEL-GAP AGGRO (planned, WoW-style) -- widen a pal's sight when it
---      out-levels you, written ONCE at spawn (per-entity scalar; the engine's own
---      spatial system does proximity). Gated on whether ViewingDistance is
---      per-INSTANCE writable -- press F9 while a pal hunts you to find out.
+--  Level-gap aggro (WoW-style) is handled in DATA as a tier-approximation (tougher
+--  species get bigger ViewingDistance, which tracks zone level) -- probed and there
+--  is no per-instance sight field to do true per-you scaling, and a proximity poll
+--  would just re-introduce the stutter. So this script does hide-to-escape only.
 -- ============================================================================
 
 local CONFIG = {
