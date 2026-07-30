@@ -17,9 +17,6 @@ stutter entirely** and leans on the game's real senses.
   turn to look, which can then lead to sight → aggro). **Crouching silences your
   footsteps**, so a crouched player is heard by nothing — only *seen*. Walk upright
   and Pals hear you coming.
-- **Level-scaled awareness is now tier-based.** Tougher species get a larger
-  `ViewingDistance`, which tracks zone level (the big things in high-level areas
-  notice you from farther). Set in the data, no runtime cost.
 
 **Added**
 - **Per-Pal senses you can tune** in `aggressive.jsonc`: `AIResponse`,
@@ -29,6 +26,11 @@ stutter entirely** and leans on the game's real senses.
 
 **Removed**
 - The runtime detection scanner (the stutter source).
+- **Level-scaled awareness** (a 1.0.0 feature). Widening a Pal's detection by how far
+  it out-levels you needs a per-frame proximity scan comparing levels — exactly the
+  stutter this release removes — and a Pal's sight range is per-*species* data, not a
+  per-Pal value we can adjust live. So it can't be done cheaply and is dropped for now;
+  detection range is a flat 25 m. May return later as an optional add-on.
 - `PreyList.txt`. Prey are now simply the species **absent** from the data patch;
   edit `aggressive.jsonc` to make any Pal passive (delete its line / set `Friendly`)
   or hostile (add it).

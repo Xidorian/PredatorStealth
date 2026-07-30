@@ -27,8 +27,7 @@ But being hunted isn't the whole story — **stealth actually works**, and it wo
 through the game's *own* senses:
 
 - **They see you.** Sight has a real vision cone and true line of sight (no seeing
-  through walls). Get behind cover or out of their cone and you're unseen. Tougher
-  species — the ones in higher-level zones — notice you from farther.
+  through walls). Get behind cover or out of their cone and you're unseen.
 - **They hear you.** Move around and nearby Pals hear you and turn to look — from
   any direction, even through walls. Sharp-eared species (bats, canines, birds)
   hear you from much farther; heavy, deaf ones only up close.
@@ -46,6 +45,14 @@ detection through Palworld's native AI as a **data patch** — no constant
 background scanning, so there's no traversal stutter and it's friendly to lower-end
 machines. A tiny companion script adds the one thing the data can't: giving up the
 chase when you break line of sight.
+
+**Note — no level-scaled aggro (yet).** v1 made higher-level Pals notice you from
+farther. Doing that properly means checking every nearby Pal's level against yours
+many times a second — which is exactly the background scanning that caused v1's
+stutter — and a Pal's sight range is fixed per species, not a per-Pal value we can
+nudge on the fly. So true level-based awareness can't be done without bringing the
+lag back, and it's **left out for now** in favor of a smooth, hostile world. It may
+return later as an optional add-on.
 
 ## Requirements
 - **UE4SS** (RE-UE4SS) for Palworld.
