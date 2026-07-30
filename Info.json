@@ -1,0 +1,15 @@
+{
+  "ModName": "Predators and Stealth",
+  "PackageName": "PredatorsandStealth",
+  "Thumbnail": "thumbnail.jpg",
+  "Version": "2.0.0",
+  "DebugMode": false,
+  "MinRevision": 82182,
+  "Author": "Xidorian",
+  "Dependencies": ["PalSchema"],
+  "Tags": ["PalSchema", "UE4SS", "Gameplay"],
+  "InstallRule": [
+    { "Type": "Lua", "Targets": ["./Scripts"] },
+    { "Type": "PalSchema", "Targets": ["./PalSchema/"] }
+  ]
+}
