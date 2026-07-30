@@ -15,7 +15,7 @@ set -uo pipefail
 
 # ===== CONFIG -- tune these, then re-run ====================================
 CSV="../PalworldMods/PalClassification.csv"   # pal data (hub, sibling repo)
-OUT="/c/Program Files (x86)/Steam/steamapps/common/Palworld/Mods/NativeMods/UE4SS/Mods/PalSchema/mods/PredatorsAndStealth_PoC/raw/aggressive.jsonc"
+OUT="/c/Program Files (x86)/Steam/steamapps/common/Palworld/Mods/NativeMods/UE4SS/Mods/PalSchema/mods/PredatorsAndStealth/raw/aggressive.jsonc"
 REPO_COPY="palschema/aggressive.jsonc"        # tracked copy in this repo
 NAMES=""                                       # optional "internal,Display" CSV -> adds name comments
 

@@ -1,4 +1,4 @@
-# Predator & Stealth — mod-page copy
+# Predators & Stealth — mod-page copy
 
 Paste/adapt this when you create the Nexus Mods, CurseForge, or Steam Workshop
 page. Sections are labeled; most upload forms have separate fields for Summary,
@@ -7,94 +7,88 @@ Description, etc.
 ---
 
 ## Name
-Predator & Stealth
+Predators & Stealth
 
 ## Version
-1.0.0
+2.0.0
 
 ## Short summary (one line)
-Most wild Pals now hunt you on sight — but crouch, break line of sight, and slip away. A hostile world where stealth actually works.
+Nearly every wild Pal now hunts you — but they hunt with real *senses*. Stay out of sight, keep quiet, crouch, and slip away. A hostile world where stealth actually works.
 
 ## Description
 
 The wilds should be dangerous. In vanilla Palworld most wild Pals ignore you or
-flee, so you wander the world unbothered. Predator & Stealth flips that: nearly
-every wild Pal now **hunts you when it spots you**. A small, curated list of
-docile species (Lamball, Cattiva, Chikipi and friends) stays passive — the world
-is hostile, with a few gentle exceptions.
+flee, so you wander the world unbothered. Predators & Stealth flips that: nearly
+every wild Pal now **hunts you**. A small curated list of docile species (Lamball,
+Cattiva, Chikipi and friends) stays passive — the world is hostile, with a few
+gentle exceptions.
 
-But being hunted isn't the whole story — **stealth actually works.** Detection
-needs real line of sight (no seeing through walls), reaches farther for Pals a
-higher level than you, and **shrinks when you crouch** — which also opens a blind
-spot behind you. Break line of sight, put some distance between you and your
-pursuer, and after a few seconds it loses the trail and gives up. Sneak past
-sleeping Pals. Your own Pals are never turned against you.
+But being hunted isn't the whole story — **stealth actually works**, and it works
+through the game's *own* senses:
 
-Unlike the "make everything hostile" pak mods, this is all done live, per-Pal, at
-runtime — which is what makes the stealth, level-scaling, and hide-to-escape
-possible instead of a blunt all-or-nothing toggle.
+- **They see you.** Sight has a real vision cone and true line of sight (no seeing
+  through walls). Get behind cover or out of their cone and you're unseen. Tougher
+  species — the ones in higher-level zones — notice you from farther.
+- **They hear you.** Move around and nearby Pals hear you and turn to look — from
+  any direction, even through walls. Sharp-eared species (bats, canines, birds)
+  hear you from much farther; heavy, deaf ones only up close.
+- **Crouch to go silent.** Crouching cuts your noise to nothing — so a Pal won't
+  *hear* you, only *see* you. Crouch-sneak behind a Pal and past it; walk upright
+  and it'll hear you coming.
+- **Hide to escape.** Once something is chasing you, break its line of sight and
+  put distance between you, and after a few seconds it loses the trail and gives
+  up. Crouching makes it give up sooner.
 
-## Why a curated prey list instead of "all hostile"?
-A world where *literally everything* — including the passive livestock you farm —
-tries to kill you gets tedious fast, and it erases the stealth gameplay (there's
-no sneaking past a Chikipi that wants you dead). Keeping a short list of docile
-species passive makes the danger feel deliberate, and the list is a plain text
-file you can edit to taste.
+Your own Pals are never turned against you.
 
-## Features
-- **Aggressive by default.** Wild Pals hunt you in range with line of sight;
-  only species in the prey list stay passive.
-- **Player-editable `PreyList.txt`** — add or remove passive species freely
-  (plain-text checklist, loaded at startup).
-- **Line-of-sight detection** — no wall-hacks; duck behind cover and you're unseen.
-- **Crouch stealth** — crouching shortens detection range and adds a rear blind spot.
-- **Level-scaled awareness** — higher-level Pals notice you from farther (capped).
-- **Hide-to-escape** — lose line of sight and distance for a few seconds and
-  pursuers give up (works against melee and ranged alike).
-- **Skips sleeping Pals** — sneak past them.
-- **Never turns your own Pals hostile** — wild Pals only.
-- Runs automatically, no keybinds. One lightweight scan on a timer, with a
-  per-tick safety cap on how many Pals can be provoked at once.
-
-## Configuration
-Open `Scripts/main.lua` and edit the `CONFIG` block at the top:
-- `base_range_m` — standing detection range in metres (default `12`).
-- `crouch_mult` — detection range multiplier while crouched (default `0.6`).
-- `front_half_angle` / `rear_mult` — crouch vision cone; outside the cone
-  (behind/sides) detection is multiplied by `rear_mult` (default `0.35`).
-- `per_level_bonus` / `level_bonus_cap` — how much a Pal's level advantage
-  extends its range, and the cap.
-- `hide_seconds` / `hide_min_distance_m` / `hide_crouch_mult` — how long out of
-  sight (and how far) before a pursuer gives up; crouching cuts both.
-- `require_los`, `skip_sleeping`, `scan_ms`, `max_aggros_per_scan` — core toggles.
-
-Passive species live in `PreyList.txt` next to the `Scripts` folder — one species
-id per line, `#` to comment a line out.
+**How it's built (and why it's light):** v2.0.0 drives all the aggression and
+detection through Palworld's native AI as a **data patch** — no constant
+background scanning, so there's no traversal stutter and it's friendly to lower-end
+machines. A tiny companion script adds the one thing the data can't: giving up the
+chase when you break line of sight.
 
 ## Requirements
-- **UE4SS** (RE-UE4SS) installed for Palworld.
+- **UE4SS** (RE-UE4SS) for Palworld.
+- **PalSchema** (by Oak) — **required.** The aggression/detection is a PalSchema
+  data patch. Install PalSchema first: https://www.nexusmods.com/palworld (search
+  "PalSchema") or its Steam Workshop page.
 - Single-player / client (host-and-play). Dedicated servers untested.
 
 ## Installation
-1. Install UE4SS for Palworld if you haven't.
-2. Extract this download so the `PredatorStealth` folder sits in your UE4SS
-   `Mods` folder, e.g.:
-   `Palworld\...\ue4ss\Mods\PredatorStealth\`
-3. Enable it. Most UE4SS builds auto-enable via the included `enabled.txt`.
-   If your setup uses `mods.txt`, add this line:
-   `PredatorStealth : 1`
-4. Launch the game.
+1. Install **UE4SS** and **PalSchema** for Palworld if you haven't.
+2. From this download:
+   - Put the **`PredatorsAndStealth`** folder (the data patch) into
+     `...\UE4SS\Mods\PalSchema\mods\` — so you have
+     `...\PalSchema\mods\PredatorsAndStealth\raw\aggressive.jsonc`.
+   - Put the **`PredatorsandStealth`** UE4SS mod folder into `...\UE4SS\Mods\` — so
+     you have `...\UE4SS\Mods\PredatorsandStealth\Scripts\main.lua`. Enable it
+     (`enabled.txt` is included; if your setup uses `mods.txt`, add
+     `PredatorsandStealth : 1`).
+3. Launch the game. (After any edit to the data patch, fully restart the game.)
+
+## Customizing which Pals are hostile / how they sense you
+Everything lives in **`PalSchema\mods\PredatorsAndStealth\raw\aggressive.jsonc`** —
+one line per Pal, editable in any text editor:
+- **Make a Pal passive:** delete its line (it reverts to vanilla), or set its
+  `AIResponse` to `Friendly`.
+- **Make a passive Pal hostile:** add a line for it with `AIResponse: Warlike`.
+- **Aggro range:** `ViewingDistance` (metres) — how far it can *see* you.
+- **Hearing range:** `HearingRate` (metres) — how far it *hears* you (crouch
+  silences you regardless). Bump it for sharp-eared species, drop it for deaf ones.
+- The file header lists every option, and each line is tagged with its category.
+
+The "prey" that stay passive are simply the species **not** in that file (Lamball,
+Cattiva, Chikipi, Vixy, Melpaca, Pengullet, and friends).
+
+Hide-to-escape timing is in `PredatorsandStealth\Scripts\main.lua` (`CONFIG` block):
+`hide_seconds`, `hide_min_distance_m`, `hide_crouch_mult`.
 
 ## Compatibility
-- PC (Steam) build with UE4SS. **Does not work** on the Xbox / Microsoft Store
-  (Game Pass) version or on consoles.
-- Don't run it alongside "all Pals hostile" pak mods — they override the same
-  behavior and defeat the stealth/curation.
-- Plays nice with other UE4SS Lua mods.
-
-## Known minor issue
-On a very dense spawn, only a few Pals are provoked per scan tick (a deliberate
-safety cap), so a whole crowd may take a second or two to fully turn on you.
+- PC (Steam) build with UE4SS + PalSchema. **Does not work** on the Xbox /
+  Microsoft Store (Game Pass) version or consoles.
+- Don't run it alongside "all Pals hostile" pak mods — they fight over the same
+  data and defeat the curation/stealth.
+- Plays nice with other UE4SS Lua and PalSchema mods.
 
 ## Credits
-Created by Xidorian.
+Created by Xidorian. Aggression/detection via **PalSchema** (Oak).

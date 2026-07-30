@@ -1,33 +1,42 @@
 # Changelog — Predators & Stealth
 
-## Unreleased (in testing)
-Live-testing two fixes: aggressive Pals fleeing instead of fighting, and
-traversal stutter on high-refresh setups. Not yet packaged or published.
+## 2.0.0
+Rearchitected from a runtime Lua scanner to a **PalSchema data patch** + a tiny
+companion script. Same fantasy — hostile world, working stealth — but it now runs
+on Palworld's own AI instead of a background scan, which **eliminates the traversal
+stutter entirely** and leans on the game's real senses.
 
-**Performance**
-- **Event-driven roster replaces the per-tick world sweep.** The scan used to call
-  `FindAllOf("PalCharacter")` and re-resolve every Pal's class by reflection on
-  every tick — a whole-array walk that blocked the game thread and grew heavier as
-  Pals streamed in while moving, surfacing as repeated freezes on a 3440×1440@120
-  setup. Pals are now added once (at load, then via `NotifyOnNewObject` as they
-  spawn), their class + prey flag cached, and the scan walks that cached roster
-  instead. A cheap full reconcile every `reseed_every_scans` ticks (default 8)
-  catches anything the spawn notification missed. No behavior change — range,
-  line-of-sight, crouch cone and hide-to-escape all work exactly as before. Scan
-  duration is logged when `verbose` is on.
+**Changed — how it works**
+- **Aggression + detection are now data, not a scan.** Every non-prey Pal is set to
+  `AIResponse: Warlike` with per-Pal `ViewingDistance` (sight/aggro range) and
+  `HearingRate` (hearing range) via PalSchema. The game's native AI does the
+  detecting, so there's **no per-tick world scan** — the repeated freezing some
+  players hit while moving is gone by construction.
+- **Real two-sense stealth, from the engine.** Sight is a vision cone + true line of
+  sight (aggro); hearing is omnidirectional and passes through walls (makes a Pal
+  turn to look, which can then lead to sight → aggro). **Crouching silences your
+  footsteps**, so a crouched player is heard by nothing — only *seen*. Walk upright
+  and Pals hear you coming.
+- **Level-scaled awareness is now tier-based.** Tougher species get a larger
+  `ViewingDistance`, which tracks zone level (the big things in high-level areas
+  notice you from farther). Set in the data, no runtime cost.
 
-**Changed**
-- **Acquisition range `base_range_m` 12 → 20.** Aggressive ("flee-then-fight")
-  Pals were noticing the player and running at vanilla's perception range, which
-  reaches farther than the published 12 m — in that gap they'd flee before the mod
-  could force them into battle. Bumped to 30 to out-reach vanilla's notice range;
-  with line-of-sight gating doing the real work, 30 m aggro'd from uncomfortably
-  far, so it's settled at a 20 m compromise. Still LOS-gated — a Pal only aggros
-  when it can actually see you — and crouch still scales the range down for stealth.
-- **`max_aggros_per_scan` 4 → 8.** With the wider range more Pals can gain line of
-  sight in a single scan tick; the old cap let the overflow get a free ~1.5 s to
-  start fleeing before the next scan. Raised so everything with LOS in a tick is
-  grabbed at once.
+**Added**
+- **Per-Pal senses you can tune** in `aggressive.jsonc`: `AIResponse`,
+  `ViewingDistance`, `HearingRate` — sharp-eared species hear far, deaf/heavy ones
+  only close. Category comments on every line.
+- **PalSchema is now a required dependency.** See the mod page for install order.
+
+**Removed**
+- The runtime detection scanner (the stutter source).
+- `PreyList.txt`. Prey are now simply the species **absent** from the data patch;
+  edit `aggressive.jsonc` to make any Pal passive (delete its line / set `Friendly`)
+  or hostile (add it).
+
+**Kept**
+- **Hide-to-escape**, rebuilt event-driven: it hooks the moment a Pal targets you,
+  watches only your active pursuers (no scan), and clears their hate + target once
+  you break line of sight and distance long enough (crouching cuts both).
 
 ## 1.0.0
 Initial release.

@@ -22,7 +22,7 @@ local CONFIG = {
     hide_min_distance_m = 20,      -- must be at least this far (point-blank never loses you)
     hide_crouch_mult    = 0.5,     -- crouching halves BOTH the time and the distance
     tick_ms             = 1000,    -- how often we re-check the (small) hunter list
-    verbose             = true,    -- DEV: log de-aggros + probe. Set false for release.
+    verbose             = false,   -- set true to log each hide-to-escape de-aggro
 }
 
 local function log(m) print("[PDST] " .. m .. "\n") end
