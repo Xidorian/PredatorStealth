@@ -97,42 +97,10 @@ LoopAsync(CONFIG.tick_ms, function()
     return false
 end)
 
--- ===== DEV PROBE -- is ViewingDistance per-INSTANCE writable? (level-gap aggro) =
--- Press F9 while a pal is hunting you. Dumps sight/view/hear/detect-named scalars
--- on the nearest hunter's controller + pawn. If a per-instance ViewingDistance
--- shows up we can do WoW-style level-gap sight at spawn; if not, sight is
--- DataTable-only (per species) and level-gap must be approximated. Strip before release.
-local function dumpSightProps(obj, tag)
-    if not isValid(obj) then return end
-    local cls; pcall(function() cls = obj:GetClass() end)
-    local depth = 0
-    while cls and cls:IsValid() and depth < 8 do
-        pcall(function()
-            cls:ForEachProperty(function(prop)
-                local name; pcall(function() name = prop:GetFName():ToString() end)
-                if name and (name:match("[Vv]iew") or name:match("[Ss]ight") or name:match("[Hh]ear")
-                          or name:match("[Dd]etect") or name:match("[Pp]ercept") or name:match("Aggro")) then
-                    local v; pcall(function() v = obj[name] end)
-                    local t = type(v)
-                    if t == "number" or t == "boolean" then log("SIGHTPROP " .. tag .. "." .. name .. " = " .. tostring(v)) end
-                end
-            end)
-        end)
-        pcall(function() cls = cls:GetSuperStruct() end)
-        depth = depth + 1
-    end
-end
-local function probeSight()
-    local ctrl
-    for _, e in pairs(WATCH) do if isValid(e.ctrl) then ctrl = e.ctrl; break end end
-    if not isValid(ctrl) then log("PROBE: no active hunter -- get a pal chasing you, then press F9"); return end
-    log("PROBE ==== sight props (hunter) ====")
-    dumpSightProps(ctrl, "ctrl")
-    dumpSightProps(getPawn(ctrl), "pawn")
-    log("PROBE ==== end ====")
-end
-pcall(function() RegisterKeyBind(Key.F9, probeSight) end)
+-- Level-gap sight (WoW-style) was probed and is NOT doable per-instance: a pal has
+-- no ViewingDistance field of its own (it's read from DT_PalMonsterParameter per
+-- species). So level-gap stays a DATA tier-approximation (tougher species see
+-- further), which tracks zone level anyway. No runtime for it -> no scan -> no stutter.
 
 log("Predators & Stealth runtime v2 loaded. hide-to-escape " .. (CONFIG.hide_enabled and "ON" or "OFF")
-    .. " (" .. CONFIG.hide_seconds .. "s no-LOS, >" .. CONFIG.hide_min_distance_m .. "m, crouch x" .. CONFIG.hide_crouch_mult
-    .. "). Press F9 on a hunter to probe ViewingDistance.")
+    .. " (" .. CONFIG.hide_seconds .. "s no-LOS, >" .. CONFIG.hide_min_distance_m .. "m, crouch x" .. CONFIG.hide_crouch_mult .. ").")
