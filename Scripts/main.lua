@@ -396,32 +396,42 @@ log(string.format("Predators & Stealth v1.0.0 loaded [%s]. AGGRESSIVE by default
 -- Runs regardless of CONFIG.enabled. Player pawn is stable (not streaming), so a
 -- one-shot property read is low-risk. Logs scalars as PLAYERPROP, components as
 -- PLAYEROBJ (candidates to probe next if the lever isn't on the pawn itself).
+local function dumpObjScalars(obj, tag)
+    local cls; pcall(function() cls = obj:GetClass() end)
+    local depth = 0
+    while cls and cls:IsValid() and depth < 8 do
+        pcall(function()
+            cls:ForEachProperty(function(prop)
+                local name; pcall(function() name = prop:GetFName():ToString() end)
+                if not name then return end
+                pcall(function()
+                    local v = obj[name]
+                    local t = type(v)
+                    if t == "number" or t == "boolean" then
+                        log("PLAYERPROP " .. tag .. "." .. name .. " = " .. tostring(v))
+                    end
+                end)
+            end)
+        end)
+        pcall(function() cls = cls:GetSuperStruct() end)
+        depth = depth + 1
+    end
+end
+-- v2: pawn only exposes bIsCrouched/BaseEyeHeight by stance; the noise/detection
+-- lever (if any) lives in a component. Dump the prime suspects' scalars too --
+-- BP_PlayerSoundEmitterComponent (player NOISE) is the top lead.
+local PROBE_COMPS = { "BP_PlayerSoundEmitterComponent", "AroundInfoCollectorComponent",
+                      "CharacterMovement", "ActionComponent", "CharacterParameterComponent" }
 local function dumpPlayerProps()
     local p = FindFirstOf("PalPlayerCharacter")
     if not isValid(p) then log("PLAYERPROBE: no player"); return end
     local crouched = "?"; pcall(function() crouched = tostring(p.bIsCrouched) end)
     log("PLAYERPROBE ==== dump (crouched=" .. crouched .. ") ====")
-    local cls; pcall(function() cls = p:GetClass() end)
-    local depth = 0
-    while cls and cls:IsValid() and depth < 8 do
-        local cname = "?"; pcall(function() cname = cls:GetFName():ToString() end)
-        log("PLAYERPROBE -- " .. cname .. " --")
-        pcall(function()
-            cls:ForEachProperty(function(prop)
-                local name; pcall(function() name = prop:GetFName():ToString() end)
-                if not name then return end
-                local out
-                pcall(function()
-                    local v = p[name]
-                    local t = type(v)
-                    if t == "number" or t == "boolean" then out = "PLAYERPROP " .. name .. " = " .. tostring(v)
-                    elseif t == "userdata" then out = "PLAYEROBJ  " .. name end
-                end)
-                if out then log(out) end
-            end)
-        end)
-        pcall(function() cls = cls:GetSuperStruct() end)
-        depth = depth + 1
+    dumpObjScalars(p, "pawn")
+    for _, cn in ipairs(PROBE_COMPS) do
+        local c; pcall(function() c = p[cn] end)
+        if isValid(c) then dumpObjScalars(c, cn)
+        else log("PLAYERPROBE (component " .. cn .. " missing/invalid)") end
     end
     log("PLAYERPROBE ==== end ====")
 end
