@@ -15,7 +15,9 @@
 -- ============================================================================
 
 local CONFIG = {
-    enabled            = true,   -- master on/off switch
+    enabled            = false,  -- OFF: aggression is now the PalSchema data patch (Warlike +
+                                 -- HearingRate). Lua scanner retired -- kept only as the future
+                                 -- home for hide-to-escape. This is what kills the traversal stutter.
     base_range_m       = 20,     -- Compromise between the published 12 and the 30 we bumped to.
                                  -- 30 was to out-reach vanilla's notice-and-flee range so
                                  -- "flee-then-fight" pals get pulled into battle before they run.
