@@ -235,39 +235,6 @@ local function probeController(ctrl, pal)
 end
 -- ===== END DEV PROBE =========================================================
 
--- ===== DEV HOOK PROBE -- BRANCH ONLY, STRIP BEFORE RELEASE ===================
--- Confirms the vanilla wild-AI decision functions actually FIRE (and on which
--- species) when a pal notices the player -- the prerequisite for moving
--- acquisition off polling and onto event hooks. Registers once, then logs each
--- firing. BP_MonsterAIController_Wild_C is a Blueprint class, so its functions
--- route through ProcessInternal and are hookable.
-local HOOKPROBE = { done = false }
-local function unwrap(o) local r = o; pcall(function() r = o:get() end); return r end
-local function ctrlSpecies(self)
-    local s = "?"
-    pcall(function() local pawn = unwrap(self):K2_GetPawn(); s = classNameOf(pawn) or "?" end)
-    return s
-end
-local function installHookProbe()
-    if HOOKPROBE.done then return end
-    HOOKPROBE.done = true
-    local WILD = "/Game/Pal/Blueprint/Controller/Monster/BP_MonsterAIController_Wild.BP_MonsterAIController_Wild_C:"
-    local function tryHook(path, label)
-        local ok = pcall(function()
-            RegisterHook(path, function(self) log("HOOK " .. label .. " -> " .. ctrlSpecies(self)) end)
-        end)
-        log("HOOKPROBE " .. label .. " register: " .. (ok and "ok" or "FAILED"))
-    end
-    tryHook(WILD .. "ForceEscaleStartForOutside", "FLEE")
-    tryHook(WILD .. "ForceBattleStartForOutside", "FIGHT")
-    local ok = pcall(function()
-        RegisterHook("/Script/Pal.PalAIController:AddTargetPlayer_ForEnemy",
-            function(self) log("HOOK ADD_TARGET -> " .. ctrlSpecies(self)) end)
-    end)
-    log("HOOKPROBE ADD_TARGET register: " .. (ok and "ok" or "FAILED"))
-end
--- ===== END DEV HOOK PROBE ====================================================
-
 local scanTick = 0
 
 local function scan()
@@ -300,7 +267,6 @@ local function scan()
             end
             if ctrl then
                 probeController(ctrl, pal)   -- DEV PROBE (branch only): one-shot function dump
-                installHookProbe()           -- DEV HOOK PROBE (branch only): one-shot hook registration
                 local tp = tpCount(ctrl)
                 if tp > 0 then
                     -- HIDE-TO-ESCAPE: this pal is hunting the player.
