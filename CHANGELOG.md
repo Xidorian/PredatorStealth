@@ -1,5 +1,18 @@
 # Changelog, Predators & Stealth
 
+## Unreleased (in testing)
+
+**Fixed**
+- **Periodic traversal stutter from the hide-to-escape tick.** The runtime pushed
+  work onto the game thread *every* tick — an `ExecuteInGameThread` sync plus a
+  `FindFirstOf` scan over every UObject — even when nothing was hunting you, which
+  is the vast majority of playtime. That constant per-tick game-thread hit was the
+  hitch commenters reported (its rhythm tracked `tick_ms`). The tick now stays fully
+  off-thread until a Pal is actually hunting you: the async loop just checks a live
+  counter and returns. The player pawn is also cached and only re-fetched on
+  death/respawn, so the `FindFirstOf` scan no longer runs per tick even mid-chase.
+  Hide-to-escape behaviour is unchanged.
+
 ## 2.0.1
 
 **Fixed**
