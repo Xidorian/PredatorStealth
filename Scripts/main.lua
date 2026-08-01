@@ -10,10 +10,20 @@
 --      Fed by a HOOK on the "pal targeted the player" event -> a tiny watch-list
 --      of only the pals actually hunting you. NO world scan (that was the stutter).
 --
+--  IDLE = ZERO GAME-THREAD WORK. The tick only touches the game thread when the
+--  watch-list is NON-EMPTY (i.e. something is actively hunting you). When nothing
+--  is -- the overwhelming majority of playtime -- the async loop just peeks a Lua
+--  table off-thread and returns, so there is no ExecuteInGameThread sync and no
+--  FindFirstOf scan per tick. That constant per-tick game-thread hit was the
+--  stutter people reported (its rhythm tracked tick_ms). The player pawn is also
+--  cached and only re-fetched on death/respawn, so FindFirstOf isn't run per tick
+--  even while you ARE being chased.
+--
 --  Level-gap aggro (WoW-style) is handled in DATA as a tier-approximation (tougher
---  species get bigger ViewingDistance, which tracks zone level) -- probed and there
---  is no per-instance sight field to do true per-you scaling, and a proximity poll
---  would just re-introduce the stutter. So this script does hide-to-escape only.
+--  species get bigger ViewingDistance, which tracks zone level). Per-instance sight
+--  IS settable (UPalAISensorComponent.SightDistance), so true per-you scaling is a
+--  possible later feature; for now a proximity poll would re-introduce the stutter,
+--  so this script does hide-to-escape only.
 -- ============================================================================
 
 local CONFIG = {
@@ -49,13 +59,22 @@ end
 -- WATCH: pals currently hunting the player. objId -> {ctrl=, noLOS=ticks}. Fed by
 -- the aggro hook (event), drained by the tick. Small -- only active hunters, so no scan.
 local WATCH = {}
+local WATCH_N = 0   -- live count, so the async loop can gate on "anything hunting?" without game-thread work
+
+-- Cached player pawn -- FindFirstOf is an all-UObjects scan, so we do it once and
+-- only re-fetch when the cached pawn goes invalid (death/respawn), not every tick.
+local PLAYER = nil
+local function currentPlayer()
+    if not isValid(PLAYER) then PLAYER = FindFirstOf("PalPlayerCharacter") end
+    return isValid(PLAYER) and PLAYER or nil
+end
 
 -- The aggro event: a pal targeted the player. MINIMAL work here -- just record the
 -- controller (valid mid-call); the tick does the LOS logic.
 local function watchAdd(self)
     local ctrl = unwrap(self); if not isValid(ctrl) then return end
     local id = objId(ctrl)
-    if id and not WATCH[id] then WATCH[id] = { ctrl = ctrl, noLOS = 0 }; vlog("watch+ " .. id) end
+    if id and not WATCH[id] then WATCH[id] = { ctrl = ctrl, noLOS = 0 }; WATCH_N = WATCH_N + 1; vlog("watch+ " .. id) end
 end
 if CONFIG.hide_enabled then
     local ok = pcall(function()
@@ -64,9 +83,11 @@ if CONFIG.hide_enabled then
     log("hide-to-escape: AddTargetPlayer_ForEnemy hook " .. (ok and "registered" or "FAILED"))
 end
 
+local function watchDel(id, why) if WATCH[id] then WATCH[id] = nil; WATCH_N = WATCH_N - 1; vlog("drop " .. id .. " " .. why) end end
+
 local function hideTick()
-    if not CONFIG.hide_enabled then return end
-    local player = FindFirstOf("PalPlayerCharacter"); if not isValid(player) then return end
+    if not CONFIG.hide_enabled or WATCH_N == 0 then return end
+    local player = currentPlayer(); if not player then return end
     local ploc = getLoc(player); if not ploc then return end
     local crouched = false; pcall(function() crouched = player.bIsCrouched end)
     local base = math.max(1, math.floor(CONFIG.hide_seconds * 1000 / CONFIG.tick_ms + 0.5))
@@ -74,9 +95,9 @@ local function hideTick()
     for id, e in pairs(WATCH) do
         local ctrl = e.ctrl
         if not isValid(ctrl) then
-            WATCH[id] = nil; vlog("drop " .. id .. " despawned")
+            watchDel(id, "despawned")
         elseif tpCount(ctrl) == 0 then
-            WATCH[id] = nil; vlog("drop " .. id .. " tp=0 (dropped target itself)")
+            watchDel(id, "tp=0 (dropped target itself)")
         else
             n = n + 1
             if not e.cls then e.cls = classNameOf(getPawn(ctrl)) end
@@ -92,8 +113,7 @@ local function hideTick()
                 e.noLOS = e.noLOS + 1
                 vlog(string.format("hunt %s noLOS %d/%d d=%.0fm", e.cls or "?", e.noLOS, needed, d))
                 if e.noLOS >= needed then
-                    clearAggro(ctrl); WATCH[id] = nil
-                    vlog("hide-escape: " .. (e.cls or "?") .. " lost you")
+                    clearAggro(ctrl); watchDel(id, "hide-escape: " .. (e.cls or "?") .. " lost you")
                 end
             else
                 if e.noLOS > 0 then vlog(string.format("hunt %s SEES you d=%.0fm (reset)", e.cls or "?", d)) end
@@ -104,15 +124,21 @@ local function hideTick()
     if n > 0 then vlog("watch size=" .. n) end
 end
 
+-- IDLE FAST-PATH: peek WATCH_N off-thread (a plain Lua int) and only pay the
+-- ExecuteInGameThread game-thread sync when something is actually hunting you.
+-- Nothing hunting -> this loop is just an int compare + sleep, no game-thread hit.
 LoopAsync(CONFIG.tick_ms, function()
-    ExecuteInGameThread(function() local ok,e = pcall(hideTick); if not ok then log("hideTick err " .. tostring(e)) end end)
+    if CONFIG.hide_enabled and WATCH_N > 0 then
+        ExecuteInGameThread(function() local ok,e = pcall(hideTick); if not ok then log("hideTick err " .. tostring(e)) end end)
+    end
     return false
 end)
 
--- Level-gap sight (WoW-style) was probed and is NOT doable per-instance: a pal has
--- no ViewingDistance field of its own (it's read from DT_PalMonsterParameter per
--- species). So level-gap stays a DATA tier-approximation (tougher species see
--- further), which tracks zone level anyway. No runtime for it -> no scan -> no stutter.
+-- Level-gap sight (WoW-style) ships as a DATA tier-approximation (tougher species
+-- see further, which tracks zone level). The per-instance sight fields on
+-- UPalAISensorComponent (SightDistance + SightAngleThreshold) are confirmed readable
+-- at runtime, so true per-you sight scaling is feasible as a later, separate feature
+-- -- kept out of this hide-to-escape runtime for now.
 
 log("Predators & Stealth runtime v2 loaded. hide-to-escape " .. (CONFIG.hide_enabled and "ON" or "OFF")
     .. " (" .. CONFIG.hide_seconds .. "s no-LOS, >" .. CONFIG.hide_min_distance_m .. "m, crouch x" .. CONFIG.hide_crouch_mult .. ").")
