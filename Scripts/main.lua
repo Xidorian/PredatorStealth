@@ -1,37 +1,29 @@
 -- ============================================================================
---  Predators & Stealth -- runtime layer (v2, PalSchema-era)
+--  Predators & Stealth -- runtime layer (v3, RESOLVE-LIVE)
 --
---  Aggression + detection is a PalSchema DATA patch. This script is only the small
---  RUNTIME that data can't do:
+--  Aggression + detection is a PalSchema DATA patch. This script is the small RUNTIME
+--  the data can't do: HIDE-TO-ESCAPE -- native de-aggro is LEASH-only, so break line of
+--  sight + get distance and, after a few seconds, a pursuer gives up.
 --
---    * HIDE-TO-ESCAPE -- native de-aggro is LEASH-only, so break line-of-sight +
---      put distance between you and a pursuer and, after a few seconds, it gives up.
+--  CRASH-SAFE ARCHITECTURE (resolve-live). Every use-after-free crash came from HOLDING a
+--  pursuer's controller/module reference and touching it on a LATER tick, after the game
+--  had freed it (death / flee / despawn / teleport). isValid() can't catch a freed "zombie",
+--  and no set of prune hooks covers every way a pal can leave. So we stop holding references:
+--    - We only ever touch a pursuer INSIDE the game's own UPalAICombatModule:UpdateBattleState
+--      call for it. `self` there is a LIVE module the game is actively ticking this frame, so
+--      it -- and the controller that owns it -- are alive right now. We resolve the controller,
+--      evaluate, act, and let go. Nothing is stored to poke next tick.
+--    - Per-pursuer state (the give-up timer) lives in TRACK keyed by the module's NAME -- a
+--      string, not a pointer, so it can never go stale. A pursuer that leaves simply stops
+--      firing UpdateBattleState; its TRACK entry ages out via a pure-timestamp GC that touches
+--      NO game object. Death / flee / despawn / teleport / your own death are all self-healing
+--      with ZERO teardown hooks and zero chance of poking a freed object.
+--  Bonus: we see EVERY battling module targeting the player, so squad-mates that inherited the
+--  target without sighting you directly are covered too.
 --
---  DESIGN:
---    - Pursuers are tracked in WATCH, fed by the CONTROLLER-side "targeted the player"
---      hook (AddTargetPlayer_ForEnemy) -- self = the controller, alive, safe to store.
---    - DRIVER = a hook on UPalAICombatModule:UpdateBattleState (the game's own combat
---      tick, fires whenever any pal is fighting). We use it purely as a "we're in combat
---      context now" trigger: on each fire we sweep the WATCH list and evaluate each
---      pursuer (throttled ~1/sec) IN the combat-tick context, where LineOfSightTo +
---      clearAggro behave. We do NOT touch the module `self` at all -- no Outer-walk to
---      find its controller (that walk, on a module ticking during teardown, was the
---      use-after-free crash: EXCEPTION_ACCESS_VIOLATION, pcall can't catch). So the hot
---      path has no unsafe touch. (Squad-copier coverage -- pals that never fire
---      AddTargetPlayer -- is a phase-2 feed.)
---    - "Can it see me" is LINE OF SIGHT ONLY (LineOfSightTo, default viewpoint -- the
---      published-build form that works) -- not the vision cone. Give-up uses an UNSEEN
---      accumulator that climbs out of sight and bleeds DOWN (not zeroes) on a glimpse.
---    - WATCHDOG = a slow idle-gated LoopAsync: safety net that evaluates pursuers the
---      hook missed, GCs despawned ones, enforces the death guard + the warp catch.
---    - DEATH SAFETY: on death Palworld tears down combat state; calling ANY UFunction
---      on the player/pursuer during that window hard-crashes (native access violation
---      pcall can't catch). livePlayer() (IsDead OR IsDying) gates EVERY path -- the
---      hook bails first thing, the watchdog drops all tracking -- so we touch nothing
---      until respawn settles.
---
---  Level-gap aggro stays a DATA tier-approximation. Per-instance sight IS settable
---  (UPalAISensorComponent.SightDistance) for a possible future feature; not here.
+--  "Can it see me" = LineOfSightTo (default viewpoint -- the published form that works),
+--  run in the combat-tick context where it and clearAggro behave. Give-up uses an UNSEEN
+--  accumulator that climbs out of sight and bleeds DOWN (not zeroes) on a glimpse.
 -- ============================================================================
 
 local CONFIG = {
@@ -41,12 +33,9 @@ local CONFIG = {
     hide_min_distance_m = 20,      -- must be at least this far (point-blank never loses you)
     hide_crouch_mult    = 0.5,     -- crouching shortens BOTH the give-up time and the distance gate
     seen_decay          = 0.5,     -- while a pursuer sees you, the unseen timer bleeds DOWN at this x rate (glimpse tolerance)
-    combat_hook         = true,    -- UpdateBattleState hook DRIVES eval, in combat-tick context (where LineOfSightTo + clearAggro behave). Crash-safe: it never touches the module `self` -- just sweeps WATCH. false = watchdog-only (still works, less native/responsive).
-    eval_throttle_s     = 0.9,     -- min seconds between evals for one pursuer (hook fires ~17x/sec; this throttles to ~1 eval/sec)
-    hook_sweep_s        = 0.3,     -- min seconds between WATCH sweeps triggered by the hook (so we don't iterate 17x/sec)
-    watchdog_ms         = 1000,    -- watchdog cadence: safety-net eval + GC + warp/death guards; idle-gated on WATCH_N>0
-    stale_s             = 0.5,     -- re-evaluate a pursuer if unchecked this long (< watchdog_ms => every cycle)
-    warp_distance_m     = 100,     -- a player jump > this in one tick = a WARP (teleport/item/dungeon/zone/respawn) -> drop ALL tracking
+    eval_throttle_s     = 0.9,     -- per-pursuer: min seconds between resolve+eval (hook fires ~17x/sec; we act ~1x/sec)
+    stale_s             = 3.0,     -- drop a TRACK entry if its module hasn't ticked in this long (the pal left combat)
+    gc_ms               = 1000,    -- staleness-GC cadence (pure Lua; touches no game objects)
     verbose             = true,    -- DEV(branch): per-pursuer countdowns + crash breadcrumbs ("op ..."). Off before release.
 }
 
@@ -62,15 +51,13 @@ local function isPlayerActor(a) if not isValid(a) then return false end local cn
 local function getLoc(a) local v; local ok=pcall(function() v=a:K2_GetActorLocation() end); if ok and v then local x,y,z; pcall(function() x=v.X;y=v.Y;z=v.Z end); if x then return {x=x,y=y,z=z} end end end
 local function dist2(a,b) local dx=a.x-b.x;local dy=a.y-b.y;local dz=a.z-b.z;return dx*dx+dy*dy+dz*dz end
 local function tpCount(ctrl) local n=0; pcall(function() n=ctrl.TargetPlayers:GetArrayNum() end); return n end
--- LOS: the game's own LineOfSightTo with DEFAULT viewpoint -- the published-build form
--- the user confirmed works. (The explicit-viewpoint variant this branch tried was the
--- regression; the custom cover-ray that replaced it broke de-aggro entirely.) Correct
--- when called from the combat-tick context (the hook), which is why the hook drives eval.
+
+-- "Can it see me": the game's own LineOfSightTo, default viewpoint (published form that works).
 local function hasLOS(ctrl, player)
     local r = false; pcall(function() r = ctrl:LineOfSightTo(player, nil, false) end); return r
 end
 
--- THE de-aggro call (confirmed safe): clear the hate map AND the active target list.
+-- THE de-aggro call (confirmed working): clear the hate map AND the active target list.
 local function clearAggro(ctrl)
     local hs; pcall(function() hs = ctrl:GetHateSystem() end)
     if isValid(hs) then local hm; pcall(function() hm = hs.HateMap end); if hm ~= nil then pcall(function() hm:Empty() end) end end
@@ -82,11 +69,8 @@ local function currentPlayer()
     if not isValid(PLAYER) then PLAYER = FindFirstOf("PalPlayerCharacter") end
     return isValid(PLAYER) and PLAYER or nil
 end
-
--- The player, but only while ALIVE. On death/dying Palworld tears down combat state;
--- touching a pursuer's controller/hate/LOS then HARD-crashes (native access violation
--- pcall cannot catch), so every path bails until respawn settles. IsDead/IsDying are
--- cheap UFunctions on PalCharacter.
+-- The player, but only while ALIVE. On death Palworld tears down combat state; touching the
+-- player (or a pursuer) during that window hard-crashes. Every path bails until respawn settles.
 local function livePlayer()
     local p = currentPlayer(); if not p then return nil end
     local out = false; pcall(function() out = p:IsDead() or p:IsDying() end)
@@ -94,87 +78,18 @@ local function livePlayer()
     return p
 end
 
--- WATCH: objId(ctrl) -> { ctrl, id, cls?, lastEval?, unseen? }. Keyed by controller;
--- we never track the combat module (that's what forced the crashing Outer-walk).
-local WATCH    = {}
-local WATCH_N  = 0
-local PREV_LOC = nil   -- player location last tick; a huge one-tick jump = a warp -> forgetAll (generic warp catch)
+-- TRACK: module-name(string) -> { unseen, lastEval, lastSeen, cls }. Keys and values are
+-- plain data (strings/numbers) only -- NEVER a game-object reference, so nothing here can
+-- go stale or crash when poked. This is the whole point of the resolve-live design.
+local TRACK = {}
+local function trackCount() local n = 0; for _ in pairs(TRACK) do n = n + 1 end; return n end
 
-local function prune(e)
-    if e.id and WATCH[e.id] then WATCH[e.id] = nil; WATCH_N = WATCH_N - 1 end
-end
-
-local function forgetAll()   -- drop ALL tracking (Lua-only, touches no game objects) -- death / warp
-    for k in pairs(WATCH) do WATCH[k] = nil end
-    WATCH_N = 0; PREV_LOC = nil
-end
-
-local function ensureEntry(ctrl)
-    local id = objId(ctrl); if not id then return end
-    local e = WATCH[id]
-    if not e then e = { ctrl = ctrl, id = id }; WATCH[id] = e; WATCH_N = WATCH_N + 1; vlog("watch+ " .. id) end
-    return e
-end
-
--- ---------------------------------------------------------------------------
---  Give-up evaluation (game thread only). Time-based (os.clock), cadence-agnostic.
--- ---------------------------------------------------------------------------
-local function evaluate(e, ctrl, now)
-    vlog("op eval " .. (e.id or "?"))   -- crash breadcrumb: if this is the last "op" line, we died evaluating this pursuer
-    local player = livePlayer(); if not player then prune(e); return end   -- YOU dead/dying: touch no pursuers
-    local pawn = getPawn(ctrl)
-    if not isValid(pawn) then prune(e); return end
-    -- A PURSUER dying in a big fight is torn down too: LineOfSightTo/GetHateSystem on its
-    -- controller then derefs the null pawn and hard-crashes. Skip + drop it if it's dead/dying.
-    local pdead = false; pcall(function() pdead = pawn:IsDead() or pawn:IsDying() end)
-    if pdead or tpCount(ctrl) == 0 then prune(e); return end
-    if not e.cls then e.cls = classNameOf(pawn) end
-    local ploc = getLoc(player); if not ploc then return end
-    local crouched = false; pcall(function() crouched = player.bIsCrouched end)
-    local dt = e.lastEval and (now - e.lastEval) or 0
-    e.lastEval = now
-
-    local pl = getLoc(pawn)
-    local d = pl and (math.sqrt(dist2(pl, ploc)) / 100) or -1   -- metres
-    local gateM = crouched and (CONFIG.hide_min_distance_m * CONFIG.hide_crouch_mult) or CONFIG.hide_min_distance_m
-    local far = d >= 0 and d >= gateM
-    local needed = far and CONFIG.hide_seconds or (CONFIG.hide_seconds * CONFIG.hide_close_mult)
-    if crouched then needed = needed * CONFIG.hide_crouch_mult end
-
-    -- "Unseen" accumulator: climbs while out of sight, bleeds DOWN while seen (not zeroes),
-    -- so a brief glimpse doesn't restart the timer but steady sight keeps a pursuer locked on.
-    e.unseen = e.unseen or 0
-    local sees = hasLOS(ctrl, player)                          -- game's own LOS (published form)
-    if sees then
-        e.unseen = math.max(0, e.unseen - dt * CONFIG.seen_decay)
-    else
-        e.unseen = e.unseen + dt
-    end
-    vlog(string.format("hunt %s unseen %.1f/%.1fs d=%.0fm", e.cls or "?", e.unseen, needed, d))
-    if e.unseen >= needed then
-        clearAggro(ctrl); prune(e)
-        log("hide-escape: " .. (e.cls or "?") .. " lost you")
-    end
-end
-
--- Feed: a pal directly targeted the player. self = the CONTROLLER, valid mid-call --
--- the safe moment to record it. (We track the controller, never the combat module.)
-local function watchAdd(self)
-    local ctrl = unwrap(self); if not isValid(ctrl) then return end
-    ensureEntry(ctrl)
-end
-if CONFIG.hide_enabled then
-    local ok = pcall(function()
-        RegisterHook("/Script/Pal.PalAIController:AddTargetPlayer_ForEnemy", function(self) watchAdd(self) end)
-    end)
-    log("hide-to-escape: AddTargetPlayer_ForEnemy hook " .. (ok and "registered" or "FAILED"))
-end
-
--- resolveController: module -> its owning PalAIController, by walking the Outer chain
--- and matching class name (safe to read on any UObject). ONLY called from OnBattleFinish
--- below -- the game's explicit "battle ending" event, where the module + its controller
--- are still alive (teardown hasn't freed them yet). It is deliberately NOT used in the
--- combat-tick hot path (UpdateBattleState), where a teardown-phase module would crash it.
+-- resolveController: LIVE module -> its owning PalAIController, via the Outer chain, matched
+-- by class name (safe to read on any UObject). ONLY called on a module the game is ACTIVELY
+-- ticking this frame (inside its own UpdateBattleState, gated on GetTargetActor==player AND
+-- IsBattleMode), so the module and the owner it walks up to are alive. This is the one place
+-- that reaches a game object we didn't just receive as `self`; the `op resolve` breadcrumb
+-- marks it so a crash here (should one ever happen) is unambiguous.
 local function resolveController(module)
     local o = module
     for _ = 1, 6 do
@@ -186,143 +101,102 @@ local function resolveController(module)
     end
 end
 
--- ---------------------------------------------------------------------------
---  DRIVER: the game's combat tick fires this ~17x/sec while any pal is fighting. We use
---  it ONLY as a "we're in combat context now" trigger -- we IGNORE the module `self`
---  entirely (no Outer-walk, no touch = no use-after-free) and instead sweep our own WATCH
---  list, evaluating each pursuer in this context (where LineOfSightTo + clearAggro behave).
---  Throttled so we sweep a few times/sec, not on every one of the ~17 fires.
--- ---------------------------------------------------------------------------
-local DRIVE_ANNOUNCED = false
-local lastHookSweep = nil
-local function onBattleTick()
-    if not CONFIG.hide_enabled or WATCH_N == 0 then return end
-    if not livePlayer() then return end                  -- dead/dying: touch no pursuers (death-crash guard)
-    local now = os.clock()
-    if lastHookSweep and (now - lastHookSweep) < CONFIG.hook_sweep_s then return end
-    lastHookSweep = now
-    if not DRIVE_ANNOUNCED then DRIVE_ANNOUNCED = true; log("hide-to-escape: driven by UpdateBattleState (combat-tick context)") end
-    for _, e in pairs(WATCH) do
-        local ctrl = e.ctrl
-        if not isValid(ctrl) or tpCount(ctrl) == 0 then
-            prune(e)
-        elseif not e.lastEval or (now - e.lastEval) >= CONFIG.eval_throttle_s then
-            evaluate(e, ctrl, now)
-        end
-    end
+-- Give-up evaluation. ctrl is LIVE (just resolved from the live module). Time-based
+-- (os.clock), cadence-agnostic. Returns true if the pursuer should give up NOW (the caller
+-- does clearAggro + drop, so the de-aggro lands on the live controller).
+local function evaluate(e, ctrl, player, now)
+    local pawn = getPawn(ctrl); if not isValid(pawn) then return end
+    local pdead = false; pcall(function() pdead = pawn:IsDead() or pawn:IsDying() end)
+    if pdead then return end
+    if not e.cls then e.cls = classNameOf(pawn) end
+    local ploc = getLoc(player); if not ploc then return end
+    local pl = getLoc(pawn)
+    local crouched = false; pcall(function() crouched = player.bIsCrouched end)
+    local dt = e.lastEval and (now - e.lastEval) or 0
+
+    local d = pl and (math.sqrt(dist2(pl, ploc)) / 100) or -1   -- metres
+    local gateM = crouched and (CONFIG.hide_min_distance_m * CONFIG.hide_crouch_mult) or CONFIG.hide_min_distance_m
+    local far = d >= 0 and d >= gateM
+    local needed = far and CONFIG.hide_seconds or (CONFIG.hide_seconds * CONFIG.hide_close_mult)
+    if crouched then needed = needed * CONFIG.hide_crouch_mult end
+
+    -- "Unseen" accumulator: climbs while out of sight, bleeds DOWN while seen (not zeroes),
+    -- so a brief glimpse doesn't restart the timer but steady sight keeps a pursuer locked on.
+    e.unseen = e.unseen or 0
+    local sees = hasLOS(ctrl, player)
+    if sees then e.unseen = math.max(0, e.unseen - dt * CONFIG.seen_decay)
+    else e.unseen = e.unseen + dt end
+    vlog(string.format("hunt %s unseen %.1f/%.1fs d=%.0fm", e.cls or "?", e.unseen, needed, d))
+    return e.unseen >= needed
 end
-if CONFIG.hide_enabled and CONFIG.combat_hook then
+
+-- ---------------------------------------------------------------------------
+--  DRIVER: the game's combat tick, fired ~17x/sec on each battling module. `self` is a
+--  LIVE module. We filter cheaply (reads of self only), resolve its live controller,
+--  evaluate in-context, and hold NOTHING across ticks.
+-- ---------------------------------------------------------------------------
+local ANNOUNCED = false
+local function onBattleTick(self)
+    if not CONFIG.hide_enabled then return end
+    local player = livePlayer(); if not player then return end    -- you dead/dying: touch nothing
+    local module = unwrap(self); if not isValid(module) then return end
+    local mid = objId(module); if not mid then return end         -- reads live `self` only: safe
+    local now = os.clock()
+    local e = TRACK[mid]
+    if e then
+        e.lastSeen = now
+        if (now - (e.lastEval or 0)) < CONFIG.eval_throttle_s then return end   -- throttle: skip the walk
+    end
+    -- Cheap filters on the LIVE module (reads of `self` only -- no Outer-walk yet):
+    local tgt; pcall(function() tgt = module:GetTargetActor() end)
+    if not isPlayerActor(tgt) then                                -- not hunting the player (pal-vs-pal / lost target)
+        if e then TRACK[mid] = nil end                            -- was ours, isn't now -> forget it
+        return
+    end
+    local inBattle = false; pcall(function() inBattle = module:IsBattleMode() end)
+    if not inBattle then return end                              -- finishing/teardown -> do NOT Outer-walk it
+    -- Resolve the LIVE controller (module is battling + targeting the player -> its owner is alive):
+    vlog("op resolve " .. mid)                                    -- breadcrumb: the ONLY reach past `self`
+    local ctrl = resolveController(module); if not isValid(ctrl) then return end
+    if not ANNOUNCED then ANNOUNCED = true; log("hide-to-escape: driven by UpdateBattleState (resolve-live)") end
+    if not e then e = { unseen = 0 }; TRACK[mid] = e; vlog("track+ " .. mid) end
+    e.lastSeen = now
+    local giveUp = evaluate(e, ctrl, player, now)
+    e.lastEval = now
+    if giveUp then clearAggro(ctrl); TRACK[mid] = nil; log("hide-escape: " .. (e.cls or "?") .. " lost you") end
+end
+if CONFIG.hide_enabled then
     local ok = pcall(function()
-        RegisterHook("/Script/Pal.PalAICombatModule:UpdateBattleState", function() onBattleTick() end)
+        RegisterHook("/Script/Pal.PalAICombatModule:UpdateBattleState", function(self) onBattleTick(self) end)
     end)
     log("hide-to-escape: UpdateBattleState hook " .. (ok and "registered" or "FAILED"))
-else
-    log("hide-to-escape: UpdateBattleState hook OFF -- watchdog-only driver")
 end
 
 -- ---------------------------------------------------------------------------
---  PRUNE-ON-DESTROY: when a pursuer's battle ends (leash / give-up / death / our own
---  clearAggro), the game tears down its combat state and soon frees the controller.
---  Inside THIS event the module is still valid, so it's the safe moment to drop our
---  tracking -- so no later tick/hook pokes the freed object. Event-driven, not polled.
+--  STALENESS GC (pure Lua). Drop TRACK entries whose module stopped ticking -- the pal left
+--  combat by ANY route (gave up / died / fled / despawned / you teleported / you died).
+--  This touches NO game object: it only compares os.clock timestamps we stored, so a freed
+--  pursuer is simply forgotten, never poked. This single loop replaces every teardown hook.
 -- ---------------------------------------------------------------------------
-local function onBattleFinish(self)
-    local module = unwrap(self); if not isValid(module) then return end
-    -- module is valid inside its own event, so the Outer-walk to its controller is safe here.
-    local ctrl = resolveController(module); if not isValid(ctrl) then return end
-    local id = objId(ctrl); if not id then return end
-    local e = WATCH[id]
-    if e then prune(e); vlog("prune battle-finished " .. id) end
-end
 if CONFIG.hide_enabled then
-    local ok = pcall(function()
-        RegisterHook("/Script/Pal.PalAICombatModule:OnBattleFinish", function(self) onBattleFinish(self) end)
-    end)
-    log("hide-to-escape: OnBattleFinish hook " .. (ok and "registered" or "FAILED"))
-end
-
--- Also drop a pursuer when the game DEACTIVATES its AI (despawn / cull / streamed out).
--- OnBattleFinish only covers a clean give-up; a pal freed while still "in combat" slips
--- past it, and touching its zombie controller on the next tick is the crash. self = the
--- controller, valid inside this call. Only prune on deactivate (activate = no-op for us).
-local function onSetActiveAI(self, active)
-    if type(active) == "userdata" then pcall(function() active = active:get() end) end
-    if active then return end                       -- activating -> not our concern
-    local ctrl = unwrap(self); if not isValid(ctrl) then return end
-    local id = objId(ctrl); if not id then return end
-    local e = WATCH[id]
-    if e then prune(e); vlog("prune deactivated " .. id) end
-end
-if CONFIG.hide_enabled then
-    local ok = pcall(function()
-        RegisterHook("/Script/Pal.PalAIController:SetActiveAI", function(self, active) onSetActiveAI(self, active) end)
-    end)
-    log("hide-to-escape: SetActiveAI hook " .. (ok and "registered" or "FAILED"))
-end
-
--- Also drop a pursuer the instant IT dies -- you killing a pursuer (or anything killing it)
--- frees its controller, and neither OnBattleFinish nor SetActiveAI reliably fires for a
--- mid-combat kill (that gap = the watchdog poking the freed controller = use-after-free).
--- OnDeadTimerStart fires ON the controller when its pal dies, starting the dead-body timer:
--- self is still valid here, so it's the safe pre-free moment to prune. self = controller.
-local function onDeadTimerStart(self)
-    local ctrl = unwrap(self); if not isValid(ctrl) then return end
-    local id = objId(ctrl); if not id then return end
-    local e = WATCH[id]
-    if e then prune(e); vlog("prune dead " .. id) end
-end
-if CONFIG.hide_enabled then
-    local ok = pcall(function()
-        RegisterHook("/Script/Pal.PalAIController:OnDeadTimerStart", function(self) onDeadTimerStart(self) end)
-    end)
-    log("hide-to-escape: OnDeadTimerStart hook " .. (ok and "registered" or "FAILED"))
-end
-
--- ---------------------------------------------------------------------------
---  Watchdog: safety net + GC + death-guard enforcer. Off-thread it reads only
---  WATCH_N; it hops to the game thread to service pursuers the hook hasn't reached
---  in stale_s and to drop despawned/de-targeted ones (or ALL, if the player is dead).
--- ---------------------------------------------------------------------------
-local function watchdogTick()
-    local player = livePlayer()
-    if not player then forgetAll(); return end            -- dead/dying: drop all tracking, touch nothing
-    -- WARP CATCH: teleport / item-warp / dungeon / zone / respawn all move the player a huge
-    -- distance in one tick and despawn the old area's pals at once. Detect the jump and drop
-    -- everything BEFORE we touch a corpse -- one check instead of hooking every warp source.
-    local ploc = getLoc(player)
-    if ploc then
-        local wd = CONFIG.warp_distance_m * 100
-        if PREV_LOC and dist2(ploc, PREV_LOC) >= wd * wd then
-            forgetAll(); vlog("player warped -> dropped all tracking"); PREV_LOC = ploc; return
-        end
-        PREV_LOC = ploc
-    end
-    vlog("op watchdog n=" .. WATCH_N)                     -- crash breadcrumb: distinguishes watchdog poke from the hook's objId
-    local now = os.clock()
-    for _, e in pairs(WATCH) do
-        local ctrl = e.ctrl
-        if not isValid(ctrl) or tpCount(ctrl) == 0 then
-            prune(e)
-        elseif not e.lastEval or (now - e.lastEval) >= CONFIG.stale_s then
-            evaluate(e, ctrl, now)
-        end
-    end
-end
-if CONFIG.hide_enabled then
-    LoopAsync(CONFIG.watchdog_ms, function()
-        if WATCH_N > 0 then
-            ExecuteInGameThread(function() local ok,err = pcall(watchdogTick); if not ok then log("watchdog err " .. tostring(err)) end end)
+    LoopAsync(CONFIG.gc_ms, function()
+        local now; pcall(function() now = os.clock() end)
+        if now then
+            for mid, e in pairs(TRACK) do
+                if not e.lastSeen or (now - e.lastSeen) > CONFIG.stale_s then
+                    TRACK[mid] = nil; vlog("track- " .. mid .. " (stale)")
+                end
+            end
         end
         return false
     end)
 end
 
 -- ===== DEV STUTTER METER -- BRANCH ONLY, STRIP BEFORE RELEASE ================
--- Detects game-thread hitches independently of our logic. A fast sampler runs ON the
--- game thread every sample_ms; when a frame stalls, the queued sample fires late and
--- the wall-clock gap spikes. Reports worst gap + hitches per ~5s window -- comparable
--- across builds even when the hitch is too subtle to feel. peakHunters ties each
--- window to how big a chase was underway (does worst-ms climb with the pack?).
+-- Detects game-thread hitches independently of our logic: a fast sampler on the game thread;
+-- when a frame stalls, the queued sample fires late and the wall-clock gap spikes. Reports
+-- worst gap + hitches per ~5s window, plus peakHunters (max pursuers tracked) so we can see
+-- whether cost scales with the size of a chase.
 local STUTTER = { enabled = true, sample_ms = 50, hitch_ms = 100, window = 100,
                   last = nil, worst = 0, hitches = 0, n = 0, peakHunters = 0, ok = true }
 if STUTTER.enabled then
@@ -332,7 +206,7 @@ if STUTTER.enabled then
             local now; pcall(function() now = os.clock() end)
             if not now then STUTTER.ok = false; log("stutter-meter: os.clock unavailable, disabled"); return end
             now = now * 1000
-            if WATCH_N > STUTTER.peakHunters then STUTTER.peakHunters = WATCH_N end
+            local hn = trackCount(); if hn > STUTTER.peakHunters then STUTTER.peakHunters = hn end
             if STUTTER.last then
                 local dt = now - STUTTER.last
                 STUTTER.n = STUTTER.n + 1
@@ -352,5 +226,5 @@ if STUTTER.enabled then
 end
 -- ===== END DEV STUTTER METER =================================================
 
-log("Predators & Stealth runtime v3 loaded. hide-to-escape " .. (CONFIG.hide_enabled and "ON" or "OFF")
+log("Predators & Stealth runtime v3 loaded (resolve-live). hide-to-escape " .. (CONFIG.hide_enabled and "ON" or "OFF")
     .. " (" .. CONFIG.hide_seconds .. "s no-sight, >" .. CONFIG.hide_min_distance_m .. "m, crouch x" .. CONFIG.hide_crouch_mult .. ").")
