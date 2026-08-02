@@ -34,6 +34,8 @@ local CONFIG = {
     eval_throttle_s     = 0.9,     -- per-pursuer: min seconds between resolve+eval (signal fires several x/sec)
     stale_s             = 3.0,     -- drop a TRACK entry if its signal hasn't fired in this long (pal left combat)
     gc_ms               = 1000,    -- staleness-GC cadence (pure Lua; touches no game objects)
+    boss_markers        = { "Gym", "Raid", "Tower" },  -- pawn-species substrings that mark a SCRIPTED-DEFEAT boss (you can't hide from these; their defeat teardown crashes if touched). Tune as boss class names are confirmed.
+    boss_pause_s        = 300,     -- when a boss is seen, pause ALL de-aggro this long -- long enough to ride through the boss's defeat teardown without touching it. Refreshes while the boss is alive.
     verbose             = true,    -- DEV(branch): countdowns + crash breadcrumbs ("op ..."). Off before release.
 }
 
@@ -90,12 +92,30 @@ local function resolveController(module)
     end
 end
 
+-- BOSS GATE. You can't hide from a scripted-defeat boss (gym/tower/raid), AND its defeat is a
+-- teardown that crashes if we touch it. We detect the boss from its SPECIES during a normal
+-- eval (while it's still alive + safe to read) and set BOSS_UNTIL -- a timer that then rides
+-- THROUGH the defeat, so onJudgeReturn bails before touching the dying module. No boss-manager
+-- hooks (those fire during teardown and crashed in dispatch). Refreshes while the boss is alive.
+local BOSS_UNTIL = nil
+local function bossActive(now) return BOSS_UNTIL ~= nil and now < BOSS_UNTIL end
+local function isBossSpecies(cls)
+    if not cls then return false end
+    for _, m in ipairs(CONFIG.boss_markers) do if cls:find(m) then return true end end
+    return false
+end
+
 -- Give-up evaluation. ctrl is LIVE (resolved from a live actively-fighting module).
 local function evaluate(e, ctrl, player, now)
     local pawn = getPawn(ctrl); if not isValid(pawn) then return end
     local pdead = false; pcall(function() pdead = pawn:IsDead() or pawn:IsDying() end)
     if pdead then return end
     if not e.cls then e.cls = classNameOf(pawn) end
+    if isBossSpecies(e.cls) then                                  -- a boss: pause de-aggro (rides through its defeat), never de-aggro it
+        BOSS_UNTIL = now + CONFIG.boss_pause_s
+        if not e.bossLogged then e.bossLogged = true; log("boss: " .. e.cls .. " -> de-aggro PAUSED (no hiding from a boss)") end
+        return
+    end
     local ploc = getLoc(player); if not ploc then return end
     local pl = getLoc(pawn)
     local crouched = false; pcall(function() crouched = player.bIsCrouched end)
@@ -124,25 +144,30 @@ end
 local ANNOUNCED = false
 local function onJudgeReturn(self)
     if not CONFIG.hide_enabled then return end
+    local now; pcall(function() now = os.clock() end); if not now then return end
+    if bossActive(now) then return end                            -- boss fight: pause, touch NOTHING
     local player = livePlayer(); if not player then return end    -- you dead/dying: touch nothing
     local module = unwrap(self); if not isValid(module) then return end
     local mid = objId(module); if not mid then return end
-    local now = os.clock()
     local e = TRACK[mid]
     if e then
         e.lastSeen = now
         if (now - (e.lastEval or 0)) < CONFIG.eval_throttle_s then return end   -- throttle
     end
+    -- Ask the CONTROLLER whether it targets a player (tpCount), instead of reading the target
+    -- ACTOR's class. That actor is volatile -- in a boss fight the pal targets your OTOMO pal,
+    -- which can churn into a freed zombie mid-fight, and reading its class was the crash. The
+    -- controller we resolve from the live module is safe; its TargetPlayers COUNT is just a number.
     vlog("op tick " .. mid)
-    local tgt; pcall(function() tgt = module:GetTargetActor() end)
-    if not isPlayerActor(tgt) then                                -- hunting something else / lost target
-        if e then TRACK[mid] = nil end
+    vlog("op resolve " .. mid)
+    local ctrl = resolveController(module)
+    if not isValid(ctrl) or tpCount(ctrl) == 0 then              -- targets no player (a pal / nothing) -> not ours
+        if e then e.ignore = true; e.lastEval = now             -- cache so the throttle skips re-walking it
+        else TRACK[mid] = { ignore = true, lastSeen = now, lastEval = now } end
         return
     end
-    vlog("op resolve " .. mid)
-    local ctrl = resolveController(module); if not isValid(ctrl) then return end
     if not ANNOUNCED then ANNOUNCED = true; log("hide-to-escape: driven by JudgeReturnCombatStartPosition") end
-    if not e then e = { unseen = 0 }; TRACK[mid] = e; vlog("track+ " .. mid) end
+    if (not e) or e.ignore then e = { unseen = 0 }; TRACK[mid] = e; vlog("track+ " .. mid) end
     e.lastSeen = now
     vlog("op eval " .. mid)
     local giveUp = evaluate(e, ctrl, player, now)
