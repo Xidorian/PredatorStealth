@@ -1,40 +1,36 @@
 # STATUS — Predators & Stealth
 
-_Last updated: 2026-08-02 (end of ~8h crash-hardening session)._
+_Last updated: 2026-08-03._
 
 ## Where it's at
-The **hide-to-escape** runtime (the one Lua piece; aggression is the PalSchema data patch) was
-crashing the game every few minutes. It now **survives an 8-hour session** including hiding,
-killing pursuers, outrunning packs, teleporting with pals on you, capturing pals, dying, and a
-full tower-boss (Grizzbolt) fight **and kill** — zero crash. De-aggro fires correctly and the
-boss is correctly un-hideable-from.
+Two big things got fixed this session, and the mod is close to a release-prep pass.
 
-**One rare residual remains:** a big pack of **CloverFairy** (flying pals) still trips the same
-use-after-free (`0x34d225c`). It's now rare — only under a heavy, fast flying-pal swarm — but
-not fixed.
+**Crashes — believed solved.** The hide-to-escape runtime was crashing the game. Root work:
+(1) drive de-aggro off `JudgeReturnCombatStartPosition` (fires only while a pal actively hunts,
+silent at give-up) holding no references across frames; (2) a **warm-up gate** so we never touch
+a pal until it's proven a stable hunter; and — the surprise — (3) **removing a DEV stutter meter**
+that pumped a function onto the game thread every 50 ms. That meter turned out to be the agitator
+behind a load-time crash (and likely more): with it gone, a hard session (6 clovers + others,
+hiding, de-aggro firing) stayed clean. A flush-safe crash-trace is still armed to catch any
+recurrence by exact call. Needs a few more play sessions to fully retire.
 
-## How it works now
-Every crash was one root: calling a UFunction on a pursuer the game had just freed (`isValid()`
-can't catch a zombie; `pcall` can't catch a C++ access violation). The fix was to **drive off a
-signal that only fires while a pal is actively hunting** and goes silent the instant it gives
-up — `UPalAICombatModule_Wild:JudgeReturnCombatStartPosition` — so we're never handed a
-teardown-phase pal. We hold **no references** across ticks (state keyed by module name, a
-string), and a pure-Lua staleness sweep forgets anyone whose signal stopped — replacing all the
-per-teardown prune hooks. Detection is the game's own `LineOfSightTo`; de-aggro clears the hate
-map + target list. Bosses are detected by species and de-aggro is paused for their fight (you
-can't hide from a boss, and touching one during its scripted fight crashes).
+**Mounted/gliding aggro — fixed.** Wild pals ignored a mounted or gliding player. Cause: mounted
+you read as a higher biological grade (the mount's), and plain `Warlike` pals stand down against a
+higher-grade target. Fix was pure data — set every species to `Warlike_Anyway` (attacks regardless
+of grade). Confirmed in-game, no on-foot regression.
 
-## Branches
-- **`feature/resolve-live`** — current, live build (commit `1bc8bea`).
-- `feature/perception-piggyback-probe` — committed fallback (the earlier whack-a-mole approach;
-  de-aggro works but crashes on teardown races).
-- `main` — shipped v2 (idle-stutter fix only); crash fixes **not yet backported**.
+## Branches / tags
+- **`main`** — `f917c28`, pushed. Now carries the crash-safe rewrite (backport done).
+- **`feature/mounted-aggro`** — `f605210`, current. The blanket-`Warlike_Anyway` fix; not yet merged.
+- **`feature/resolve-live`** — redundant (== the crash work now on `main`); safe to delete.
+- **`archive/main-2026-08-03`** — tag, on origin: the pre-crash-fix `main` (`e8ed5c3`) time capsule.
 
 ## Next
-See `NEXT.md`. Headline items: the flying-pal-pack residual crash, re-confirm normal-pal
-de-aggro after the recent target-check change, the your-pal-vs-mobs behavior question, then
-strip the dev instrumentation and reconcile to `main`.
+See `NEXT.md`. Most remaining work is **validation through play** (Alexander tests, reports back),
+then a cleanup pass (strip DEV instrumentation, kill the stray PalSchema duplicate), then merge to
+`main` and package per `BUILD.md`.
 
 ## Dev note
-The live build still has crash breadcrumbs (`op …` log lines), a stutter meter, and
-`verbose=true` — all marked to strip before release.
+The live `Scripts/main.lua` still has DEV instrumentation — the flush-safe crash-trace breadcrumbs
+and `verbose = true` — to keep catching any crash recurrence. Strip before packaging. The stutter
+meter was removed (it was the crash suspect) and must be re-added only briefly for a packaging check.

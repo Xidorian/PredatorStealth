@@ -1,28 +1,43 @@
 # NEXT — Predators & Stealth
 
-Ordered. Crash work first, then behavior, then release.
+Core problems look solved. Remaining "now" work is mostly **validation through play** —
+Alexander drives that and reports back. Then release prep, then the idea backlog.
 
-- [ ] **Fix the flying-pal-pack residual crash.** Big CloverFairy pack still trips the
-      use-after-free (`0x34d225c`, a UFunction on a freed pursuer). Add per-call breadcrumbs
-      inside `evaluate` (`op los` / `op pawn` / `op clear`) so the next clover-pack crash names
-      the exact call, then guard/restructure it. Reproduce by pulling a big clover swarm.
-- [ ] **Re-confirm normal-pal de-aggro** still fires after the `tpCount`-instead-of-target-class
-      change (last session went straight to boss/clovers; didn't watch a clean ground-pal give
-      up). Fight wild pals, hide, expect `hide-escape`.
-- [ ] **Your-pal-vs-mobs behavior (design):** sick your otomo on wild mobs, then hide/run. Does
-      a mob keep fighting your pal or fully disengage? `clearAggro` empties the whole hate map,
-      so a mob that also targets you abandons the pal fight when you hide. If that's wrong,
-      strip only the player's hate (needs the player InstanceID, not `Empty()`). If a mob
-      targets only your pal (`tpCount=0`) we never track it — it keeps fighting your pal.
-- [ ] **Hammer big packs** for peak-load stability (partly done — found the clover residual).
-- [ ] **Verify boss markers.** Only `Gym` (Grizzbolt/ElecPanda_Gym) confirmed; check other tower
-      / raid bosses get detected (`CONFIG.boss_markers`).
-- [ ] **Cleanup for release:** strip crash breadcrumbs + stutter meter (marked BRANCH ONLY),
-      set `verbose = false`.
-- [ ] **Reconcile:** backport the crash-safe design to `main`; commit; CHANGELOG entry; package.
+## Now — validate through play (Alexander tests, reports back)
+- [ ] **Crash stability.** Believed fixed: removing the DEV stutter meter (a per-50ms
+      `ExecuteInGameThread` game-thread pump — the load-tick crash suspect) plus the warm-up
+      gate. One solid session stayed clean through 6 clovers + de-aggro. Keep hammering the
+      hard cases — big/fast flying-pal swarms, boss fights, teleport/capture/death. The
+      flush-safe crash-trace is still armed: if it ever dies again, `pdst_crash_trace.log`
+      (next to the live script) names the exact call. Retire once several sessions stay clean.
+- [ ] **De-aggro sanity.** `hide-escape` confirmed firing (Deer / CloverFairy / LeafMomonga
+      "lost you"). Just keep an eye that ordinary ground pals still give up cleanly.
+- [ ] **Your-pal-vs-mobs behaviour (design call).** Sic your otomo on wild mobs, then hide/run.
+      `clearAggro` empties the *whole* hate map, so a mob also targeting you abandons the pal
+      fight when you hide. If that's wrong, strip only the player's hate (needs the player
+      InstanceID, not `Empty()`). A mob targeting only your pal (`tpCount=0`) is never tracked —
+      it keeps fighting your pal.
+- [ ] **Boss markers.** Only `Gym` (Grizzbolt/ElecPanda_Gym) confirmed; watch that tower/raid
+      bosses are detected and correctly not-hidden-from (`CONFIG.boss_markers`).
 
-## Later / feature backlog
-- [ ] **Flee-at-low-HP:** pursuer retreats at ~10% HP (needs a callable flee/return trigger).
-- [ ] **PalModOptions:** optional in-game options (feature-detect; mod still works without it).
-- [ ] **Data:** neutral boss mammorest won't auto-aggro (PalSchema `AIResponse`).
-- [ ] **Multiplayer:** untested.
+## Before release (cleanup + package)
+- [ ] **Strip DEV instrumentation** from `Scripts/main.lua`: the crash-trace facility
+      (`TRACE`/`trace()` + all the `op`/`walk`/`getpawn`/`los` breadcrumbs) and set
+      `verbose = false`.
+- [ ] **Stutter check, then strip.** Re-add the stutter meter for ONE packaging measurement,
+      confirm clean, then remove it again — it must NOT ship (recover from
+      `git show 4f3a1df:Scripts/main.lua`).
+- [ ] **Delete the stray PalSchema duplicate** from the install:
+      `…/PalSchema/mods/PredatorsandStealth/mods/PredatorStealth/raw/aggressive.jsonc`
+      (double-load footgun). Ship only the one `…/PredatorsandStealth/raw/aggressive.jsonc`.
+- [ ] **Merge + package.** `feature/mounted-aggro` → `main`; delete the now-redundant
+      `feature/resolve-live`; roll `## Unreleased` into a version heading; package per `BUILD.md`.
+
+## After everything's fixed — idea backlog
+- [ ] **PalModOptions:** optional in-game tunables (feature-detect; mod still works without it) —
+      hide_seconds / distance / crouch / per-species sight+hearing.
+- [ ] **Data:** neutral boss Mammorest won't auto-aggro (needs its own `AIResponse`).
+- [ ] **Multiplayer:** untested (`currentPlayer` = one local `FindFirstOf(PalPlayerCharacter)`).
+- [ ] **Level-gap sight scaling (reopened):** `UPalAISensorComponent.SightDistance` is
+      per-instance settable after all — the WoW-style "higher-level pals notice you from further"
+      idea is viable again if we want it. Optional.
