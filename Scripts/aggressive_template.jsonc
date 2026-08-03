@@ -1,0 +1,343 @@
+// Predators & Stealth -- PalSchema aggression patch. Hand-edit freely; restart the game after.
+// Retune a category with find & replace -- HearingRate (heard m): 16.0 sharp-eared | 10.0 default | 6.0 deaf.
+// Knobs per pal: AIResponse (hostility) | ViewingDistance (aggro/sight m, flat 25) | HearingRate (heard m).
+// AIResponse tags: Warlike | Warlike_Anyway | NotInterested | Escape | Friendly | (Kill_All/Boss avoid).
+// ALL species are now "Warlike_Anyway" (2026-08-03). History: VANILLA "Escape_to_Battle" species (86 of
+//   them) IGNORE plain "Warlike" -- they flee/investigate and never commit -- so they always needed
+//   "Warlike_Anyway", which attacks regardless of the escape state AND regardless of biological-grade
+//   comparison. The rest used plain "Warlike". We blanketed everything to "Warlike_Anyway" because plain
+//   "Warlike" stands down when you read as a HIGHER grade -- which is what happens when you're MOUNTED (you
+//   read as the mount's grade) -- so plain-Warlike pals ignore a mounted player. "Warlike_Anyway" ignores
+//   grade, so it should also make pals hunt you while mounted/gliding (TESTING). The per-line
+//   "(Escape_to_Battle -> ...)" notes below just record which species were originally escape-state.
+//   Revert to the split via git if the blanket proves undesirable.
+// Sight is a flat 25 for all -- no level/threat scaling (see MODPAGE for why). Tune per pal if you want.
+// Prey (passive) = the species simply ABSENT from this file.
+{
+  "DT_PalMonsterParameter": {
+    "BadCatgirl": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "BlueberryFairy": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "BrownRabbit": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears (Escape_to_Battle -> Warlike_Anyway)
+    "ElecLion": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "GoldenHorse": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "PinkKangaroo": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "TentacleTurtle": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 6.0 }, // deaf ears
+    "TentacleTurtle_Ground": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 6.0 }, // deaf ears
+    "BeardedDragon": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "WaterLizard": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "GrassDragon": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "Anubis": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "Baphomet": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "Baphomet_Dark": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "Bastet": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "Bastet_Ice": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "Boar": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "Deer": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears (Escape_to_Battle -> Warlike_Anyway)
+    "Deer_Ground": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears (Escape_to_Battle -> Warlike_Anyway)
+    "DrillGame": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "Eagle": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "ElecPanda": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "Ganesha": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "Garm": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "Gorilla": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "Gorilla_Ground": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "Hedgehog": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "Hedgehog_Ice": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "Kirin": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "Kirin_Ice": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "Kitsunebi": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "LittleBriarRose": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "Mutant": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "Penguin_Electric": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "RaijinDaughter": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "SharkKid": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "SharkKid_Fire": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "Umihebi": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "Umihebi_Fire": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "Werewolf": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "WindChimes": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "WindChimes_Ice": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "Suzaku": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "Suzaku_Water": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "FireKirin": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "FireKirin_Dark": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "FairyDragon": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "FairyDragon_Water": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "SweetsSheep": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "SweetsSheep_Ground": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "WhiteTiger": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "Serpent": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "Serpent_Ground": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "DarkCrow": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "BlueDragon": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "BlueDragon_Ice": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "NegativeKoala": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "FengyunDeeper": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "VolcanicMonster": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "VolcanicMonster_Ice": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "GhostBeast": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "RobinHood": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "RobinHood_Ground": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "LazyDragon": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "LazyDragon_Electric": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "AmaterasuWolf": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "LizardMan": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "LizardMan_Fire": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "BluePlatypus": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "BluePlatypus_Fire": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "BlackFurDragon": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "BirdDragon": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "BirdDragon_Ice": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "FlowerDinosaur": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "FlowerDinosaur_Electric": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "ElecCat": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears (Escape_to_Battle -> Warlike_Anyway)
+    "IceHorse": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "IceHorse_Dark": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "GrassMammoth": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 6.0 }, // deaf ears
+    "GrassMammoth_Ice": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 6.0 }, // deaf ears
+    "CatVampire": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "SakuraSaurus": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "SakuraSaurus_Water": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "Horus": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "KingBahamut": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "KingBahamut_Dragon": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "BerryGoat": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "IceDeer": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "BlackGriffon": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "WhiteMoth": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "WhiteMoth_Neutral": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "FoxMage": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears (Escape_to_Battle -> Warlike_Anyway)
+    "FoxMage_Dark": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "PinkLizard": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "WizardOwl": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "Kelpie": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "Kelpie_Fire": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "NegativeOctopus": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "NegativeOctopus_Neutral": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "Yeti": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "Yeti_Grass": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "VioletFairy": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "HawkBird": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "FlowerRabbit": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears (Escape_to_Battle -> Warlike_Anyway)
+    "LilyQueen": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "LilyQueen_Dark": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "QueenBee": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "SoldierBee": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "CatBat": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "GrassPanda": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "GrassPanda_Electric": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "FlameBuffalo": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "ThunderDog": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "ThunderDog_Ice": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "CuteMole": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "BlackMetalDragon": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 6.0 }, // deaf ears
+    "GrassRabbitMan": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "IceFox": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "JetDragon": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "Monkey": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "Monkey_Ice": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "Monkey_Fire": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "Manticore": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "Manticore_Dark": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "KingAlpaca": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "KingAlpaca_Ice": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "PlantSlime": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "PlantSlime_Flower": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "DarkMutant": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "MopBaby": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "MopKing": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "CatMage": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "CatMage_Fire": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "PinkRabbit": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears (Escape_to_Battle -> Warlike_Anyway)
+    "ThunderBird": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "ThunderBird_Ice": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "HerculesBeetle": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "HerculesBeetle_Ground": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "SaintCentaur": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "NightFox": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears (Escape_to_Battle -> Warlike_Anyway)
+    "CaptainPenguin": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "CaptainPenguin_Black": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "WeaselDragon": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "WeaselDragon_Fire": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "SkyDragon": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "SkyDragon_Grass": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "HadesBird": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "HadesBird_Electric": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "RedArmorBird": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "Ronin": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "Ronin_Dark": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "FlyingManta": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "FlyingManta_Thunder": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "BlackCentaur": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "FlowerDoll": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "FlowerDoll_Fire": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "NaughtyCat": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "CuteButterfly": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "DarkScorpion": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "DarkScorpion_Ground": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "ThunderDragonMan": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "LazyCatfish": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "LazyCatfish_Gold": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "LavaGirl": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "FlameBambi": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "NightLady": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "NightLady_Dark": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "MoonQueen": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "KendoFrog": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "KendoFrog_Dark": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "LeafPrincess": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "MushroomDragon": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "MushroomDragon_Dark": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "SmallArmadillo": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "CandleGhost": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "ScorpionMan": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "ScorpionMan_Electric": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "WingGolem": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 6.0 }, // deaf ears
+    "WingGolem_Fire": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 6.0 }, // deaf ears
+    "GuardianDog": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "SifuDog": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "FeatherOstrich": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "DarkAlien": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "WhiteAlienDragon": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "VolcanoDragon": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "VolcanoDragon_Ice": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "DarkMechaDragon": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 6.0 }, // deaf ears
+    "GhostRabbit": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears (Escape_to_Battle -> Warlike_Anyway)
+    "GhostRabbit_Grass": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears (Escape_to_Battle -> Warlike_Anyway)
+    "NightBlueHorse": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "NightBlueHorse_Neutral": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "WhiteShieldDragon": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "BlackPuppy": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "BlackPuppy_Ice": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "WhiteDeer": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "WhiteDeer_Dark": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "KingWhale": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "MysteryMask": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "HoodGhost": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "Sekhmet": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "ElecLizard": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "GrimGirl": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "PurpleSpider": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "BlueThunderHorse": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "RockBeast": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 6.0 }, // deaf ears
+    "RockBeast_Ice": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 6.0 }, // deaf ears
+    "OctopusGirl": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "OctopusGirl_Neutral": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "IceNarwhal": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "IceNarwhal_Fire": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "JellyfishFairy": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "SUMMON_DarkAlien": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "SUMMON_DarkAlien_MAX": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "SUMMON_WhiteAlienDragon": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "Kitsunebi_Ice": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "BerryGoat_Dark": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "PinkRabbit_Grass": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears (Escape_to_Battle -> Warlike_Anyway)
+    "Werewolf_Ice": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "AmaterasuWolf_Dark": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "RaijinDaughter_Water": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "WhiteTiger_Ground": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "FengyunDeeper_Electric": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "Horus_Water": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "SnowTigerBeastman": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "WingGolem_Oilrig": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 6.0 }, // deaf ears
+    "DarkAlien_Oilrig": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "Horus_Oilrig": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "Baphomet_Dark_Oilrig": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "HadesBird_Oilrig": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "LizardMan_Oilrig": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "SnakeGirl": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "GhostAnglerfish": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "GhostAnglerfish_Fire": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "IceWitch": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "ClownRabbit": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "LegendDeer": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "LeafMomonga": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "SmallYeti": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "IceCrocodile": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "CactusDoll": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "CactusDoll_Dark": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "MushroomLady": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "StuffedShark": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "StuffedShark_Fire": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "FoxExorcist": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "IceSeal": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "IceSeal_Ground": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "CloverFairy": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "ElecPomeranian": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "GhostBlackCat": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "ThiefBird": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "OniGhostGirl": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "KingCrab": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 6.0 }, // deaf ears
+    "Plesiosaur": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "TropicalOstrich": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "GrassGolem": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 6.0 }, // deaf ears
+    "GrassGolem_Dark": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 6.0 }, // deaf ears
+    "SnowPeafowl": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "CubeTurtle": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 6.0 }, // deaf ears
+    "CubeTurtle_Neutral": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 6.0 }, // deaf ears
+    "LongCat": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "JellyfishGhost": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "ThunderFluffyBird": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "MoonChild": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "SamuraiDog": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears (Escape_to_Battle -> Warlike_Anyway)
+    "PoseidonOrca": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "SwordCutlassfish": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "SwordCutlassfish_Fire": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "YakushimaMonster001": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "YakushimaMonster001_Blue": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "YakushimaMonster001_Red": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "YakushimaMonster001_Purple": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "YakushimaMonster001_Pink": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "YakushimaMonster001_Rainbow": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "YakushimaMonster002": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "YakushimaMonster003": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "YakushimaMonster003_Purple": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "YakushimaBoss001": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "YakushimaBoss001_Small": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "Quest_Farmer03_SheepBall": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "Quest_Farmer03_PinkCat": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "GYM_ElecPanda_Otomo": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "MummyPal": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "KingSunfish": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "KingSunfish_Thunder": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "MonochromeQueen": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "ElecSnail": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "ElecSnail_Fire": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "ElecSnail_Ground": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "LanternButler": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "SumoDog": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "VenusFlytrap": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "StrawHatCat": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "CandleWitch": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "FluffyBird": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears (Escape_to_Battle -> Warlike_Anyway)
+    "FrozenBear": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "DandelionGirl": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "VolcanicTurtle": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 6.0 }, // deaf ears
+    "ClioneTwins": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears (Escape_to_Battle -> Warlike_Anyway)
+    "DarkFlameFox": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "IceVeilDragon": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "RedFlowerBird": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "SleeveRabbit": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "LotusDragon": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "BlueSkyDragon": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "BlueWoolRabbit": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "PandaGirl": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "GrassMinotaur": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "GrassMinotaur_Ice": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "MonochromeMushroom": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "MedjedBird": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "Mothman": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "GhostDragon": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "GhostDragon_Fire": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "FlowerPrince": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "WorldTreeDragon": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "KabukiMan": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "DomeArmorDragon": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "RockCheetah": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 6.0 }, // deaf ears
+    "ArmorWoodlouse": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "MexicanSalamander": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "LeafBird": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
+    "CuteOrca": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    "SnakeQueen": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 } // default ears
+  }
+}

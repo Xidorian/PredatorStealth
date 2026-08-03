@@ -278,3 +278,8 @@ end
 
 log("Predators & Stealth runtime v3 loaded (judge-return driver). hide-to-escape " .. (CONFIG.hide_enabled and "ON" or "OFF")
     .. " (" .. CONFIG.hide_seconds .. "s no-sight, >" .. CONFIG.hide_min_distance_m .. "m, crouch x" .. CONFIG.hide_crouch_mult .. ").")
+
+-- By-size aggression options (PalModOptions integration). Separate concern, guarded: a failure
+-- here must never take down the hide-to-escape runtime above.
+local okOpt, errOpt = pcall(require, "aggro_options")
+if not okOpt then log("aggro-options module failed to load: " .. tostring(errOpt)) end
