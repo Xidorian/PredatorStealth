@@ -23,6 +23,13 @@
   death/respawn, so the `FindFirstOf` scan no longer runs per tick even mid-chase.
   Hide-to-escape behaviour is unchanged.
 
+**Changed**
+- **Wild Pals now hunt you while mounted or gliding.** A mounted or gliding player reads
+  as too large for most Pals to pick a fight with, so they'd ignore you unless already
+  aggro'd — no free-riding through hostile territory. Every hostile species is now set to
+  attack regardless of that size comparison, so mounting no longer buys you a pass. (This
+  also simplifies the aggression data to a single response type across the board.)
+
 ## 2.0.1
 
 **Fixed**
