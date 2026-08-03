@@ -3,6 +3,16 @@
 ## Unreleased (in testing)
 
 **Fixed**
+- **The mod could crash the game during some fights.** Hide-to-escape occasionally
+  touched a pursuing Pal's AI the instant the game was tearing it down (on death,
+  flee, despawn, teleport, or a boss's scripted defeat) — a use-after-free the engine
+  can't recover from. Rebuilt the internals to be crash-safe: the runtime now drives
+  off a signal that only fires while a Pal is *actively* hunting you (never during
+  teardown), holds no references to Pals between frames, and forgets a pursuer the
+  moment it leaves the fight. Bosses are recognised and left alone (you can't hide
+  from a scripted boss anyway). A final hardening pass ignores Pals that only flicker
+  into a fight for a fraction of a second — the case that survived under big, fast
+  flying-Pal swarms. Hide-to-escape behaviour is unchanged.
 - **Periodic traversal stutter from the hide-to-escape tick.** The runtime pushed
   work onto the game thread *every* tick — an `ExecuteInGameThread` sync plus a
   `FindFirstOf` scan over every UObject — even when nothing was hunting you, which

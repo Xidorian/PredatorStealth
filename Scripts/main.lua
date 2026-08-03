@@ -20,6 +20,13 @@
 --  NAME (a string), and a pure-Lua staleness GC drops anyone whose signal stopped -- so a pal
 --  that gave up / died / despawned / warped is simply forgotten, never poked.
 --
+--  WARM-UP GATE (flying-pack hardening). Even a live-firing signal can hand us a module in a
+--  transient state under a heavy, fast flying-pal swarm (spawn churn / teardown flicker), and
+--  touching one there is a use-after-free no isValid/pcall can catch. So on first contact we
+--  RECORD ONLY -- we touch nothing but `self` -- and don't walk to the controller / pawn until
+--  a module has proven it's a STABLE hunter (fired a few times over a fraction of a second).
+--  Transient modules go silent and the GC forgets them before we ever touch them.
+--
 --  "Can it see me" = LineOfSightTo (default viewpoint -- the published form that works).
 --  Give-up uses an UNSEEN accumulator that climbs out of sight and bleeds DOWN on a glimpse.
 -- ============================================================================
@@ -32,6 +39,8 @@ local CONFIG = {
     hide_crouch_mult    = 0.5,     -- crouching shortens BOTH the give-up time and the distance gate
     seen_decay          = 0.5,     -- while a pursuer sees you, the unseen timer bleeds DOWN at this x rate
     eval_throttle_s     = 0.9,     -- per-pursuer: min seconds between resolve+eval (signal fires several x/sec)
+    warmup_fires        = 3,       -- a module must fire JudgeReturn this many times...
+    warmup_s            = 0.35,    -- ...AND span at least this long before we touch its controller/pawn. Skips transient spawn/teardown-flicker modules (the flying-pack use-after-free) -- we hold nothing but `self` until a module proves it's a STABLE hunter.
     stale_s             = 3.0,     -- drop a TRACK entry if its signal hasn't fired in this long (pal left combat)
     gc_ms               = 1000,    -- staleness-GC cadence (pure Lua; touches no game objects)
     boss_markers        = { "Gym", "Raid", "Tower" },  -- pawn-species substrings that mark a SCRIPTED-DEFEAT boss (you can't hide from these; their defeat teardown crashes if touched). Tune as boss class names are confirmed.
@@ -41,6 +50,35 @@ local CONFIG = {
 
 local function log(m) print("[PDST] " .. m .. "\n") end
 local function vlog(m) if CONFIG.verbose then log(m) end end
+
+-- ===== DEV CRASH TRACE -- BRANCH ONLY, STRIP BEFORE RELEASE ==================
+-- UE4SS.log BUFFERS: on a use-after-free the last breadcrumbs never reach disk (that's the
+-- 290ms void we saw before the last crash). This writes fine-grained "op" breadcrumbs to a
+-- DEDICATED file and FLUSHES after every line, so the very last call before the crash
+-- survives -- naming the exact UFunction + object + the isValid() state we saw right before
+-- touching it. Falls back to print() if io is unavailable. Strip with the rest of the DEV code.
+local TRACE = { on = CONFIG.verbose, f = nil, path = nil }
+if TRACE.on then
+    local candidates = {
+        "C:/Program Files (x86)/Steam/steamapps/common/Palworld/Mods/NativeMods/UE4SS/Mods/PredatorsandStealth/pdst_crash_trace.log",
+        "pdst_crash_trace.log",   -- fallback: game CWD (Binaries/Win64)
+    }
+    for _, p in ipairs(candidates) do
+        local fh; local ok = pcall(function() fh = io and io.open(p, "a") end)
+        if ok and fh then TRACE.f = fh; TRACE.path = p; break end
+    end
+    if TRACE.f then pcall(function() TRACE.f:write("\n==== session start ====\n"); TRACE.f:flush() end) end
+    log("crash-trace: " .. (TRACE.f and ("flushing to " .. TRACE.path) or "io unavailable -> print() fallback"))
+end
+-- op = short verb; mid = module id (may be nil in the walk); extra = free-form (species, validity)
+local function trace(op, mid, extra)
+    if not TRACE.on then return end
+    local t; pcall(function() t = os.clock() end)
+    local line = string.format("%.4f %s %s%s", t or 0, op, mid or "?", extra and (" " .. extra) or "")
+    if TRACE.f then pcall(function() TRACE.f:write(line, "\n"); TRACE.f:flush() end)
+    else print("[PDST] trace " .. line .. "\n") end
+end
+-- ===== END DEV CRASH TRACE ===================================================
 
 local function isValid(o) return o ~= nil and type(o) == "userdata" and o.IsValid and o:IsValid() end
 local function objId(o) local n; pcall(function() n = o:GetFName():ToString() end); return n end
@@ -74,19 +112,22 @@ local function livePlayer()
     return p
 end
 
--- TRACK: module-name(string) -> { unseen, lastEval, lastSeen, cls }. Plain data only -- never
--- a game-object reference, so nothing here can go stale or crash when read.
+-- TRACK: module-name(string) -> { firstSeen, lastSeen, fires, warm, unseen, lastEval, cls, ignore }.
+-- Plain data only -- never a game-object reference, so nothing here can go stale or crash when
+-- read. firstSeen/fires/warm drive the warm-up gate; unseen is set once a module goes warm.
 local TRACK = {}
 local function trackCount() local n = 0; for _ in pairs(TRACK) do n = n + 1 end; return n end
 
 -- module -> its owning PalAIController, via the Outer chain, matched by class name. Safe here
 -- because JudgeReturnCombatStartPosition only fires on a LIVE, actively-fighting module.
-local function resolveController(module)
+local function resolveController(module, mid)
     local o = module
-    for _ = 1, 6 do
+    for i = 1, 6 do
+        trace("walk.getouter", mid, "step=" .. i)             -- about to GetOuter on current link
         local nxt; pcall(function() nxt = o:GetOuter() end)
         if not isValid(nxt) then return end
         o = nxt
+        trace("walk.getclass", mid, "step=" .. i)             -- about to read the outer's class
         local cn = classNameOf(o)
         if cn and cn:find("AIController") then return o end
     end
@@ -105,18 +146,26 @@ local function isBossSpecies(cls)
     return false
 end
 
--- Give-up evaluation. ctrl is LIVE (resolved from a live actively-fighting module).
-local function evaluate(e, ctrl, player, now)
-    local pawn = getPawn(ctrl); if not isValid(pawn) then return end
+-- Give-up evaluation. ctrl is LIVE (resolved from a WARM, stable, actively-fighting module).
+-- The `op ...` breadcrumbs name the exact game-object call in flight -- if a residual crash
+-- ever slips through the warm-up gate, the last one printed before the log stops is the culprit.
+local function evaluate(e, ctrl, player, now, mid)
+    trace("getpawn", mid, "sp=" .. (e.cls or "?"))
+    local pawn = getPawn(ctrl)
+    local pvalid = isValid(pawn)
+    trace("gotpawn", mid, "pawnValid=" .. tostring(pvalid))
+    if not pvalid then return end
+    trace("pawndead", mid)
     local pdead = false; pcall(function() pdead = pawn:IsDead() or pawn:IsDying() end)
     if pdead then return end
-    if not e.cls then e.cls = classNameOf(pawn) end
+    if not e.cls then trace("pawncls", mid); e.cls = classNameOf(pawn) end
     if isBossSpecies(e.cls) then                                  -- a boss: pause de-aggro (rides through its defeat), never de-aggro it
         BOSS_UNTIL = now + CONFIG.boss_pause_s
         if not e.bossLogged then e.bossLogged = true; log("boss: " .. e.cls .. " -> de-aggro PAUSED (no hiding from a boss)") end
         return
     end
     local ploc = getLoc(player); if not ploc then return end
+    trace("pawnloc", mid, "sp=" .. (e.cls or "?"))
     local pl = getLoc(pawn)
     local crouched = false; pcall(function() crouched = player.bIsCrouched end)
     local dt = e.lastEval and (now - e.lastEval) or 0
@@ -128,7 +177,9 @@ local function evaluate(e, ctrl, player, now)
     if crouched then needed = needed * CONFIG.hide_crouch_mult end
 
     e.unseen = e.unseen or 0
+    trace("los", mid, "sp=" .. (e.cls or "?"))
     local sees = hasLOS(ctrl, player)
+    trace("los.ok", mid)
     if sees then e.unseen = math.max(0, e.unseen - dt * CONFIG.seen_decay)
     else e.unseen = e.unseen + dt end
     vlog(string.format("hunt %s unseen %.1f/%.1fs d=%.0fm", e.cls or "?", e.unseen, needed, d))
@@ -149,32 +200,46 @@ local function onJudgeReturn(self)
     local player = livePlayer(); if not player then return end    -- you dead/dying: touch nothing
     local module = unwrap(self); if not isValid(module) then return end
     local mid = objId(module); if not mid then return end
+
+    -- FIRST CONTACT: record only. We touch NOTHING but `self` (the one object the hook
+    -- guarantees is live this frame). A module in a transient spawn/teardown state can fire
+    -- JudgeReturn a few times and vanish; recording-only lets the staleness GC forget it
+    -- BEFORE we ever walk to its (possibly-freeing) controller -- the flying-pack crash.
     local e = TRACK[mid]
-    if e then
-        e.lastSeen = now
-        if (now - (e.lastEval or 0)) < CONFIG.eval_throttle_s then return end   -- throttle
+    if not e then TRACK[mid] = { firstSeen = now, lastSeen = now, fires = 1 }; return end
+    e.lastSeen = now
+    e.fires = (e.fires or 1) + 1
+    if e.ignore then return end                                   -- known non-player module: never re-walk
+
+    -- WARM-UP GATE: only now, once this module has proven it's a STABLE hunter (fired
+    -- >= warmup_fires across >= warmup_s), do we walk to the controller / touch the pawn.
+    if not e.warm then
+        if e.fires < CONFIG.warmup_fires or (now - (e.firstSeen or now)) < CONFIG.warmup_s then return end
+        e.warm = true; vlog("warm " .. mid)
     end
+    if (now - (e.lastEval or 0)) < CONFIG.eval_throttle_s then return end   -- throttle
+
     -- Ask the CONTROLLER whether it targets a player (tpCount), instead of reading the target
     -- ACTOR's class. That actor is volatile -- in a boss fight the pal targets your OTOMO pal,
     -- which can churn into a freed zombie mid-fight, and reading its class was the crash. The
-    -- controller we resolve from the live module is safe; its TargetPlayers COUNT is just a number.
-    vlog("op tick " .. mid)
-    vlog("op resolve " .. mid)
-    local ctrl = resolveController(module)
-    if not isValid(ctrl) or tpCount(ctrl) == 0 then              -- targets no player (a pal / nothing) -> not ours
-        if e then e.ignore = true; e.lastEval = now             -- cache so the throttle skips re-walking it
-        else TRACK[mid] = { ignore = true, lastSeen = now, lastEval = now } end
+    -- controller we resolve from the live warm module is safe; its TargetPlayers COUNT is just a number.
+    trace("resolve", mid, "sp=" .. (e.cls or "?"))
+    local ctrl = resolveController(module, mid)
+    local cvalid = isValid(ctrl)
+    trace("resolved", mid, "ctrlValid=" .. tostring(cvalid))
+    if not cvalid or tpCount(ctrl) == 0 then                    -- targets no player (a pal / nothing) -> not ours
+        e.ignore = true; e.lastEval = now                       -- cache so we never re-walk it
         return
     end
     if not ANNOUNCED then ANNOUNCED = true; log("hide-to-escape: driven by JudgeReturnCombatStartPosition") end
-    if (not e) or e.ignore then e = { unseen = 0 }; TRACK[mid] = e; vlog("track+ " .. mid) end
-    e.lastSeen = now
-    vlog("op eval " .. mid)
-    local giveUp = evaluate(e, ctrl, player, now)
+    if e.unseen == nil then e.unseen = 0; vlog("track+ " .. mid) end
+    trace("eval", mid, "sp=" .. (e.cls or "?"))
+    local giveUp = evaluate(e, ctrl, player, now, mid)
     e.lastEval = now
     if giveUp then
-        vlog("op clear " .. mid)
-        clearAggro(ctrl); TRACK[mid] = nil; log("hide-escape: " .. (e.cls or "?") .. " lost you")
+        trace("clear", mid, "sp=" .. (e.cls or "?"))
+        clearAggro(ctrl); trace("clear.ok", mid); TRACK[mid] = nil
+        log("hide-escape: " .. (e.cls or "?") .. " lost you")
     end
 end
 if CONFIG.hide_enabled then
@@ -203,35 +268,13 @@ if CONFIG.hide_enabled then
     end)
 end
 
--- ===== DEV STUTTER METER -- BRANCH ONLY, STRIP BEFORE RELEASE ================
-local STUTTER = { enabled = true, sample_ms = 50, hitch_ms = 100, window = 100,
-                  last = nil, worst = 0, hitches = 0, n = 0, peakHunters = 0, ok = true }
-if STUTTER.enabled then
-    LoopAsync(STUTTER.sample_ms, function()
-        ExecuteInGameThread(function()
-            if not STUTTER.ok then return end
-            local now; pcall(function() now = os.clock() end)
-            if not now then STUTTER.ok = false; log("stutter-meter: os.clock unavailable, disabled"); return end
-            now = now * 1000
-            local hn = trackCount(); if hn > STUTTER.peakHunters then STUTTER.peakHunters = hn end
-            if STUTTER.last then
-                local dt = now - STUTTER.last
-                STUTTER.n = STUTTER.n + 1
-                if dt > STUTTER.worst then STUTTER.worst = dt end
-                if dt > STUTTER.hitch_ms then STUTTER.hitches = STUTTER.hitches + 1 end
-                if STUTTER.n >= STUTTER.window then
-                    log(string.format("stutter: worst %.0fms | hitches>%dms=%d/%d (~%.0fs window) | peakHunters=%d",
-                        STUTTER.worst, STUTTER.hitch_ms, STUTTER.hitches, STUTTER.n,
-                        STUTTER.n * STUTTER.sample_ms / 1000, STUTTER.peakHunters))
-                    STUTTER.worst = 0; STUTTER.hitches = 0; STUTTER.n = 0; STUTTER.peakHunters = 0
-                end
-            end
-            STUTTER.last = now
-        end)
-        return false
-    end)
-end
--- ===== END DEV STUTTER METER =================================================
+-- ===== DEV STUTTER METER -- REMOVED (was a load-tick crash suspect) ==========
+-- The per-50ms ExecuteInGameThread stutter meter lived here. Pulled while isolating a
+-- load-time UE4SS tick-path crash (fault 0x708) that fired with hide-to-escape idle -- this
+-- meter was the only ours-code on that game-thread path. RE-ADD before packaging to measure
+-- stutter one last time. Recover it from git: `git show 4f3a1df:Scripts/main.lua` (block
+-- marked "DEV STUTTER METER"). It uses trackCount() (still defined above).
+-- ============================================================================
 
 log("Predators & Stealth runtime v3 loaded (judge-return driver). hide-to-escape " .. (CONFIG.hide_enabled and "ON" or "OFF")
     .. " (" .. CONFIG.hide_seconds .. "s no-sight, >" .. CONFIG.hide_min_distance_m .. "m, crouch x" .. CONFIG.hide_crouch_mult .. ").")
