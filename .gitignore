@@ -1,1 +1,4 @@
 *.zip
+
+# packaging / workshop upload staging (build artifacts)
+workshop-upload/
