@@ -1,36 +1,35 @@
 # STATUS — Predators & Stealth
 
-_Last updated: 2026-08-03._
+_Last updated: 2026-08-04. **v2.1.0 shipped.**_
 
 ## Where it's at
-Two big things got fixed this session, and the mod is close to a release-prep pass.
+**v2.1.0 is released** — committed to `main`, tagged `v2.1.0`, pushed. Three things landed since
+2.0.1:
 
-**Crashes — believed solved.** The hide-to-escape runtime was crashing the game. Root work:
-(1) drive de-aggro off `JudgeReturnCombatStartPosition` (fires only while a pal actively hunts,
-silent at give-up) holding no references across frames; (2) a **warm-up gate** so we never touch
-a pal until it's proven a stable hunter; and — the surprise — (3) **removing a DEV stutter meter**
-that pumped a function onto the game thread every 50 ms. That meter turned out to be the agitator
-behind a load-time crash (and likely more): with it gone, a hard session (6 clovers + others,
-hiding, de-aggro firing) stayed clean. A flush-safe crash-trace is still armed to catch any
-recurrence by exact call. Needs a few more play sessions to fully retire.
+- **Crashes solved.** The hide-to-escape runtime was crashing the game. Fixed by driving de-aggro
+  off `JudgeReturnCombatStartPosition` (holds no references across frames), a **warm-up gate** (never
+  touch a pal until it's a proven stable hunter), and — the real agitator — **removing a dev stutter
+  meter** that pumped the game thread every 50 ms. Validated over long play incl. massive pulls.
+- **Mounted/gliding aggro fixed.** Mounted you read as a higher biological grade, so plain `Warlike`
+  pals stood down. Blanketed all species to `Warlike_Anyway` (attacks regardless of grade).
+- **By-size options menu (new feature).** With the optional **PalModOptions** (a.k.a. Mod Options
+  Framework), an Esc → Mod Options page toggles which wild-pal **sizes** (XS/S/M/L/XL) are hostile.
+  Off = that size reverts to **vanilla** (not passive). Restart-to-apply; regenerates the effective
+  `aggressive.jsonc` from a stable template + baked size map. Feature-detected; no PMO → all hostile.
 
-**Mounted/gliding aggro — fixed.** Wild pals ignored a mounted or gliding player. Cause: mounted
-you read as a higher biological grade (the mount's), and plain `Warlike` pals stand down against a
-higher-grade target. Fix was pure data — set every species to `Warlike_Anyway` (attacks regardless
-of grade). Confirmed in-game, no on-foot regression.
+## To upload (manual — in repo root)
+- `PredatorStealth-2.1.0.zip` → Nexus · `PredatorStealth-Steam-2.1.0.zip` → Steam ·
+  `workshop-upload/` → Steam Workshop. Description copy is in `MODPAGE.md`. See `BUILD.md`.
 
 ## Branches / tags
-- **`main`** — `f917c28`, pushed. Now carries the crash-safe rewrite (backport done).
-- **`feature/mounted-aggro`** — `f605210`, current. The blanket-`Warlike_Anyway` fix; not yet merged.
-- **`feature/resolve-live`** — redundant (== the crash work now on `main`); safe to delete.
-- **`archive/main-2026-08-03`** — tag, on origin: the pre-crash-fix `main` (`e8ed5c3`) time capsule.
+- **`main`** — `4061e32`, the v2.1.0 release. Only branch (feature branches folded + deleted).
+- Tags: `v2.1.0` (release), `v2.0.1`/`v2.0.0`, `archive/main-2026-08-03` (pre-crashfix main),
+  `archive/crash-instrumented-2026-08-04` (the crash-trace build, if a crash ever resurfaces).
 
 ## Next
-See `NEXT.md`. Most remaining work is **validation through play** (Alexander tests, reports back),
-then a cleanup pass (strip DEV instrumentation, kill the stray PalSchema duplicate), then merge to
-`main` and package per `BUILD.md`.
+See `NEXT.md`. Headline: **phase-2 per-pal overrides** on the size buckets, then the smaller idea
+backlog (boss markers, multiplayer, level-gap sight). The crash/mounted/menu work is done + shipped.
 
 ## Dev note
-The live `Scripts/main.lua` still has DEV instrumentation — the flush-safe crash-trace breadcrumbs
-and `verbose = true` — to keep catching any crash recurrence. Strip before packaging. The stutter
-meter was removed (it was the crash suspect) and must be re-added only briefly for a packaging check.
+The shipped `main.lua` is clean (`verbose = false`, no crash-trace). The crash-trace facility lives
+at tag `archive/crash-instrumented-2026-08-04` — recover from there if a crash ever comes back.
