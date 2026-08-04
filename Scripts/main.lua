@@ -43,13 +43,37 @@ local CONFIG = {
     warmup_s            = 0.35,    -- ...AND span at least this long before we touch its controller/pawn. Skips transient spawn/teardown-flicker modules (the flying-pack use-after-free) -- we hold nothing but `self` until a module proves it's a STABLE hunter.
     stale_s             = 3.0,     -- drop a TRACK entry if its signal hasn't fired in this long (pal left combat)
     gc_ms               = 1000,    -- staleness-GC cadence (pure Lua; touches no game objects)
-    boss_markers        = { "Gym", "Raid", "Tower" },  -- pawn-species substrings that mark a SCRIPTED-DEFEAT boss (you can't hide from these; their defeat teardown crashes if touched). Tune as boss class names are confirmed.
+    boss_row_prefixes   = { "GYM_", "RAID_" },  -- DT row-name (CharacterID) prefixes of SCRIPTED-DEFEAT bosses: GYM_ = tower, RAID_ = raid. You can't hide from these AND their defeat teardown crashes if touched. Field alphas (BOSS_*) are deliberately NOT here -- they stay hideable.
     boss_pause_s        = 300,     -- when a boss is seen, pause ALL de-aggro this long -- long enough to ride through the boss's defeat teardown without touching it. Refreshes while the boss is alive.
     verbose             = false,   -- countdown / give-up logging. Ship with this OFF.
 }
 
 local function log(m) print("[PDST] " .. m .. "\n") end
 local function vlog(m) if CONFIG.verbose then log(m) end end
+
+-- Runtime tunables from the PalModOptions menu (difficulty preset / individual sliders), read from
+-- PMO's persisted .ini at load via the shared resolver. game_restart apply-mode => the file is
+-- already stable, so there's no race. Guarded end-to-end: any failure leaves the hardcoded defaults
+-- above (== Normal preset == shipped behaviour). detect_scale is data-side (aggro_options), not here.
+do
+    local okReq, mod = pcall(require, "aggro_config")
+    if okReq and type(mod) == "table" then
+        local okEff, e = pcall(mod.effective)                     -- capture BOTH pcall returns (no `and`-chain truncation)
+        if okEff and type(e) == "table" then
+            CONFIG.hide_enabled        = e.hide_enabled ~= false
+            CONFIG.hide_seconds        = tonumber(e.hide_seconds) or CONFIG.hide_seconds
+            CONFIG.hide_min_distance_m = tonumber(e.hide_min_distance_m) or CONFIG.hide_min_distance_m
+            CONFIG.hide_crouch_mult    = tonumber(e.hide_crouch_mult) or CONFIG.hide_crouch_mult
+            log("tunables: preset=" .. tostring(e.preset) .. " hide=" .. tostring(CONFIG.hide_enabled)
+                .. " give-up=" .. tostring(CONFIG.hide_seconds) .. "s >" .. tostring(CONFIG.hide_min_distance_m)
+                .. "m crouch x" .. tostring(CONFIG.hide_crouch_mult) .. " (detect x" .. tostring(e.detect_scale) .. " is data-side)")
+        else
+            log("tunables: resolver error -> built-in defaults (Normal)")
+        end
+    else
+        log("tunables: aggro_config unavailable -> built-in defaults (Normal)")
+    end
+end
 
 local function isValid(o) return o ~= nil and type(o) == "userdata" and o.IsValid and o:IsValid() end
 local function objId(o) local n; pcall(function() n = o:GetFName():ToString() end); return n end
@@ -83,7 +107,7 @@ local function livePlayer()
     return p
 end
 
--- TRACK: module-name(string) -> { firstSeen, lastSeen, fires, warm, unseen, lastEval, cls, ignore }.
+-- TRACK: module-name(string) -> { firstSeen, lastSeen, fires, warm, unseen, lastEval, cls, rowId, ignore }.
 -- Plain data only -- never a game-object reference, so nothing here can go stale or crash when
 -- read. firstSeen/fires/warm drive the warm-up gate; unseen is set once a module goes warm.
 local TRACK = {}
@@ -102,16 +126,37 @@ local function resolveController(module)
     end
 end
 
--- BOSS GATE. You can't hide from a scripted-defeat boss (gym/tower/raid), AND its defeat is a
--- teardown that crashes if we touch it. We detect the boss from its SPECIES during a normal
--- eval (while it's still alive + safe to read) and set BOSS_UNTIL -- a timer that then rides
--- THROUGH the defeat, so onJudgeReturn bails before touching the dying module. No boss-manager
--- hooks (those fire during teardown and crashed in dispatch). Refreshes while the boss is alive.
+-- BOSS GATE. You can't hide from a scripted-defeat boss (GYM_ tower / RAID_ raid), AND its defeat
+-- is a teardown that crashes if we touch it. We detect the boss from its ROW NAME (CharacterID --
+-- authoritative, NOT a Blueprint class-name guess) during a normal eval (while it's still alive +
+-- safe to read) and set BOSS_UNTIL -- a timer that then rides THROUGH the defeat, so onJudgeReturn
+-- bails before touching the dying module. Field alphas (BOSS_*) are NOT scripted bosses -- they stay
+-- fully hideable. No boss-manager hooks (those fire during teardown and crashed in dispatch).
+-- Refreshes while the boss is alive.
 local BOSS_UNTIL = nil
 local function bossActive(now) return BOSS_UNTIL ~= nil and now < BOSS_UNTIL end
-local function isBossSpecies(cls)
-    if not cls then return false end
-    for _, m in ipairs(CONFIG.boss_markers) do if cls:find(m) then return true end end
+
+-- Pawn's DT_PalMonsterParameter row name (CharacterID) -- the authoritative species id. Chain:
+-- APalCharacter -> CharacterParameterComponent -> GetIndividualParameter() -> GetCharacterID().
+-- Called only inside evaluate() (warm, live, alive pawn -- the same safe envelope as classNameOf),
+-- pcall-guarded at every hop; returns nil on any miss so the caller just retries next eval.
+local function rowIdOf(pawn)
+    local comp; pcall(function() comp = pawn.CharacterParameterComponent end)
+    if not isValid(comp) then return nil end
+    local ind; pcall(function() ind = comp:GetIndividualParameter() end)
+    if not isValid(ind) then return nil end
+    local fn; pcall(function() fn = ind:GetCharacterID() end)
+    if fn == nil then return nil end
+    local s; pcall(function() s = fn:ToString() end)
+    return s
+end
+-- Scripted-defeat boss = row name starts with GYM_ (tower) or RAID_ (raid). Prefix-anchored at
+-- position 1, so field alphas (BOSS_*) and everything else read as hideable.
+local function isScriptedBoss(rowId)
+    if not rowId then return false end
+    for _, p in ipairs(CONFIG.boss_row_prefixes) do
+        if rowId:sub(1, #p) == p then return true end
+    end
     return false
 end
 
@@ -121,9 +166,10 @@ local function evaluate(e, ctrl, player, now)
     local pdead = false; pcall(function() pdead = pawn:IsDead() or pawn:IsDying() end)
     if pdead then return end
     if not e.cls then e.cls = classNameOf(pawn) end
-    if isBossSpecies(e.cls) then                                  -- a boss: pause de-aggro (rides through its defeat), never de-aggro it
+    if not e.rowId then e.rowId = rowIdOf(pawn) end               -- authoritative species row name; nil-safe, retries next eval
+    if isScriptedBoss(e.rowId) then                               -- GYM_/RAID_ only: pause de-aggro (rides through its defeat), never de-aggro it
         BOSS_UNTIL = now + CONFIG.boss_pause_s
-        if not e.bossLogged then e.bossLogged = true; log("boss: " .. e.cls .. " -> de-aggro PAUSED (no hiding from a boss)") end
+        if not e.bossLogged then e.bossLogged = true; log("scripted boss: " .. e.rowId .. " -> de-aggro PAUSED (no hiding from a tower/raid boss)") end
         return
     end
     local ploc = getLoc(player); if not ploc then return end

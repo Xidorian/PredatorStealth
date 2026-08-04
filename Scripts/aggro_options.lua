@@ -1,9 +1,12 @@
--- aggro_options.lua -- Predators & Stealth: by-SIZE aggression options via PalModOptions (PMO).
+-- aggro_options.lua -- Predators & Stealth: aggression + difficulty options via PalModOptions (PMO).
 --
--- WHAT: registers a PMO settings page (five size toggles: XS/S/M/L/XL) and, from the player's
--- choices, regenerates the EFFECTIVE aggressive.jsonc that PalSchema loads -- including only pals
--- whose size tier is enabled. Off-tier pals are simply OMITTED from the patch -> they revert to
--- VANILLA behaviour. This is NOT "made passive": a Pal that attacks you in vanilla still attacks.
+-- WHAT: registers the PMO settings page (hide-to-escape toggle, difficulty preset + custom sliders,
+-- and five size toggles: XS/S/M/L/XL) and applies the DATA-side choices: it regenerates the EFFECTIVE
+-- aggressive.jsonc that PalSchema loads -- including only pals whose size tier is enabled, with their
+-- detection ranges scaled by detect_scale. Off-tier pals are simply OMITTED from the patch -> they
+-- revert to VANILLA. This is NOT "made passive": a Pal that attacks you in vanilla still attacks.
+-- The RUNTIME knobs (give-up time/distance/crouch, hide on/off) are consumed by main.lua, not here;
+-- both sides read the same choices through the shared aggro_config resolver.
 --
 -- WHY THIS SHAPE (the "split", documented per request): UE4SS Lua can't reliably write the raw
 -- monster DataTable, so PalSchema stays the applier; our job is only to DECIDE which pals it makes
@@ -17,6 +20,7 @@
 -- every tier is on = the shipped all-hostile default.
 --
 local SIZES = require("pal_sizes")
+local cfg   = require("aggro_config")   -- shared: .ini location + read, difficulty presets, resolve
 
 local PMO = "PalModOptions.V1."
 local ID  = "PredatorStealth"
@@ -32,7 +36,6 @@ local SCRIPTS = scriptDir()                                                  -- 
 local MODS    = SCRIPTS:match("^(.*)[/\\][^/\\]+[/\\][^/\\]+$") or SCRIPTS    -- .../Mods
 local TEMPLATE     = SCRIPTS .. "/aggressive_template.jsonc"                  -- stable, never written
 local EFFECTIVE    = MODS .. "/PalSchema/mods/PredatorsandStealth/raw/aggressive.jsonc"  -- what PalSchema loads
-local FALLBACK_CFG = MODS .. "/PalModOptions/Scripts/config/" .. ID .. ".ini"
 
 local function log(m) print("[PDST-Options] " .. m .. "\n") end
 local function sv_get(k) local v; pcall(function() v = ModRef:GetSharedVariable(k) end); return v end
@@ -42,18 +45,30 @@ local function pmoPresent()
     return ModRef ~= nil and sv_get(PMO .. "ApiVersion") ~= nil
 end
 
--- ---- PMO page manifest (5 size booleans, restart-to-apply) --------------------
+-- ---- PMO page manifest: hide toggle + difficulty preset + custom sliders + size toggles ------
+-- Value classes: hide on/off + the 4 tuning knobs are RUNTIME (read by main.lua); detect_scale is
+-- also DATA (applied below in buildEffective); the sizes are DATA (filter below). All restart-to-apply.
+-- The 4 sliders under "Custom tuning" are only consulted when Difficulty = Custom (see aggro_config).
 local MANIFEST = table.concat({
     '{',
       '"api":1,',
       '"id":"', ID, '",',
       '"title":"Predators & Stealth",',
-      '"description":"Choose which wild Pals hunt you, by size. Off = that size reverts to VANILLA (Pals that attack you in vanilla still will; it is not made passive). Restart to apply.",',
-      '"version":1,',
+      '"description":"Choose how wild Pals hunt you: hide-to-escape difficulty, fine tuning, and which sizes are hostile. Restart to apply.",',
+      '"version":2,',
       '"apply_mode":"game_restart",',
       '"options":[',
+        '{"key":"sec_hide","type":"section","label":"Hide-to-escape"},',
+        '{"key":"hide_enabled","type":"boolean","label":"Hide-to-escape enabled","description":"Break line of sight and gain distance to make pursuers give up. Off = they only stop at the vanilla leash range.","default":true},',
+        '{"key":"sec_diff","type":"section","label":"Difficulty"},',
+        '{"key":"preset","type":"enum","label":"Difficulty","description":"Relaxed = easier to lose pursuers. Hardcore = harder, and Pals see/hear farther. Custom uses the sliders below.","choices":["Relaxed","Normal","Hardcore","Custom"],"default":"Normal"},',
+        '{"key":"sec_custom","type":"section","label":"Custom tuning (only used when Difficulty = Custom)"},',
+        '{"key":"hide_seconds","type":"integer","label":"Give-up time (seconds unseen)","description":"How long a pursuer must fail to see you before it gives up.","minimum":1,"maximum":30,"step":1,"default":6},',
+        '{"key":"hide_min_distance_m","type":"integer","label":"Give-up distance (metres)","description":"You must be at least this far away; point-blank never loses you.","minimum":5,"maximum":60,"step":1,"default":20},',
+        '{"key":"hide_crouch_mult","type":"number","label":"Crouch multiplier (lower = crouch helps more)","description":"Scales both the give-up time and distance while crouching.","minimum":0.1,"maximum":1.0,"step":0.05,"default":0.5},',
+        '{"key":"detect_scale","type":"number","label":"Detection range scale (x sight and hearing)","description":"Multiplies every hostile Pal\'s aggro sight and hearing range.","minimum":0.5,"maximum":2.0,"step":0.05,"default":1.0},',
         '{"key":"sec_sizes","type":"section","label":"Hostile Pal sizes"},',
-        '{"key":"size_XS","type":"boolean","label":"XS Pals hostile","default":true},',
+        '{"key":"size_XS","type":"boolean","label":"XS Pals hostile","description":"Off = XS Pals revert to VANILLA (vanilla-hostile ones still attack; not made passive).","default":true},',
         '{"key":"size_S","type":"boolean","label":"S Pals hostile","default":true},',
         '{"key":"size_M","type":"boolean","label":"M Pals hostile","default":true},',
         '{"key":"size_L","type":"boolean","label":"L Pals hostile","default":true},',
@@ -70,34 +85,29 @@ local function register()
     sv_set(PMO .. "PendingRegistry", existing == "" and ID or (existing .. "\n" .. ID))
 end
 
--- ---- read the player's toggles from PMO's persisted .ini ----------------------
-local function configPath()
-    local dir = sv_get(PMO .. "ConfigDirectory")
-    if type(dir) == "string" and dir ~= "" then return dir .. "\\" .. ID .. ".ini" end
-    return FALLBACK_CFG
+-- ---- scale a species object's detection ranges (data knob) --------------------
+-- detect_scale multiplies ViewingDistance (int in the schema) and HearingRate (float). x1.0 = no-op.
+local function scaleDetection(obj, scale)
+    if not scale or scale == 1.0 then return obj end
+    obj = obj:gsub('("ViewingDistance"%s*:%s*)([%d%.]+)', function(pre, num)
+        return pre .. tostring(math.floor(tonumber(num) * scale + 0.5))
+    end)
+    obj = obj:gsub('("HearingRate"%s*:%s*)([%d%.]+)', function(pre, num)
+        return pre .. string.format("%.1f", tonumber(num) * scale)
+    end)
+    return obj
 end
 
-local function readToggles()
-    local t = { XS = true, S = true, M = true, L = true, XL = true }   -- default: all on
-    local f = io.open(configPath(), "r"); if not f then return t end
-    for line in f:lines() do
-        local k, v = line:match("^(size_%w+)=(%a+)")
-        if k then local tier = k:sub(6); if t[tier] ~= nil then t[tier] = (v == "true") end end
-    end
-    f:close()
-    return t
-end
-
--- ---- build the effective patch: template filtered to enabled sizes ------------
-local function buildEffective(toggles)
+-- ---- build the effective patch: template filtered to enabled sizes, detection scaled ----------
+local function buildEffective(sizes, detectScale)
     local f = io.open(TEMPLATE, "r"); if not f then return nil, "template missing at " .. TEMPLATE end
     local entries, kept = {}, 0
     for line in f:lines() do
         local key, obj = line:match('^%s*"([%w_]+)"%s*:%s*(%b{})')   -- one species object per line
         if key then
             local sz = SIZES[key]
-            if sz and toggles[sz] then
-                entries[#entries + 1] = '    "' .. key .. '": ' .. obj
+            if sz and sizes[sz] then
+                entries[#entries + 1] = '    "' .. key .. '": ' .. scaleDetection(obj, detectScale)
                 kept = kept + 1
             end
         end
@@ -111,13 +121,14 @@ local function readFile(p) local f = io.open(p, "r"); if not f then return nil e
 local function writeFile(p, c) local f = io.open(p, "w"); if not f then return false end f:write(c); f:flush(); f:close(); return true end
 
 local function sync()
-    local toggles = readToggles()
-    local content, kept = buildEffective(toggles)
+    local eff = cfg.effective()                                   -- sizes + detect_scale (preset-resolved)
+    local s = eff.sizes
+    local content, kept = buildEffective(s, eff.detect_scale)
     if not content then log("ERROR: " .. tostring(kept)); return end
     if readFile(EFFECTIVE) ~= content then
         if writeFile(EFFECTIVE, content) then
-            log(string.format("regenerated aggressive.jsonc -> %d pals hostile (XS=%s S=%s M=%s L=%s XL=%s). Restart to apply.",
-                kept, tostring(toggles.XS), tostring(toggles.S), tostring(toggles.M), tostring(toggles.L), tostring(toggles.XL)))
+            log(string.format("regenerated aggressive.jsonc -> %d pals hostile (XS=%s S=%s M=%s L=%s XL=%s, detect x%.2f). Restart to apply.",
+                kept, tostring(s.XS), tostring(s.S), tostring(s.M), tostring(s.L), tostring(s.XL), eff.detect_scale))
         else
             log("ERROR: could not write " .. EFFECTIVE)
         end

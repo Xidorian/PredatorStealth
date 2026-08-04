@@ -1,5 +1,25 @@
 # Changelog, Predators & Stealth
 
+## Unreleased (in testing)
+
+**Added**
+- **Difficulty presets and fine-tuning in the Mod Options menu.** A new **Difficulty** setting
+  (Relaxed / Normal / Hardcore / Custom) tunes how hard Pals are to escape in one pick. **Relaxed**
+  makes pursuers give up sooner and see less far; **Hardcore** makes them hang on longer and spot you
+  from farther. Choose **Custom** to set each knob yourself: give-up time, give-up distance, how much
+  crouching helps, and a detection-range scale on every hostile Pal's sight and hearing. There's also
+  a master **Hide-to-escape** on/off switch. Restart to apply. Without PalModOptions the mod runs at
+  the Normal preset, exactly as before.
+- **Overworld field bosses now hunt you too.** The 59 field-alpha Pals that used to ignore you
+  (Mammorest, King Alpaca, the giant flower dinosaurs, and more) are now aggressive like everything
+  else. They still obey the by-size toggles.
+
+**Fixed**
+- **Only true tower and raid bosses are exempt from hiding now.** The "you can't hide from a scripted
+  boss" rule now recognises a boss by its actual identity (tower `GYM_*` / raid `RAID_*`) instead of
+  guessing from its internal name, so those bosses are caught reliably while ordinary field alphas
+  stay fully hideable.
+
 ## 2.1.0
 
 **Added**

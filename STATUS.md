@@ -1,6 +1,23 @@
 # STATUS — Predators & Stealth
 
-_Last updated: 2026-08-04. **v2.1.0 shipped.**_
+_Last updated: 2026-08-04. **v2.1.0 shipped; next batch (C+D+E) committed, in live testing.**_
+
+## In testing now (committed to `main`, not yet released)
+Batch **C+D+E** from `NEXT.md` is written and committed — awaiting a live play-test before it's
+packaged as the next version. **A** (de-aggro drops only the player, not the otomo fight) is the one
+remaining task, held until this batch validates.
+- **C — field bosses hunt you (data).** The 59 neutral field-alpha rows (`BOSS_*` = Mammorest, King
+  Alpaca, etc.) flipped to `Warlike_Anyway` in both `aggressive.jsonc` and the template, with matching
+  `pal_sizes.lua` entries so the size filter keeps them.
+- **D — boss no-hide gate by identity (code).** `main.lua` now reads the pursuer's real row name
+  (`CharacterID`) and freezes only `GYM_*`/`RAID_*` bosses; field alphas stay hideable. No more
+  class-name substring guessing.
+- **E — difficulty + tunables menu (feature).** New shared `aggro_config.lua` resolver; PMO page gains
+  a Difficulty preset (Relaxed/Normal/Hardcore/Custom), custom sliders (give-up time/distance, crouch,
+  detection scale), and a hide on/off master toggle. `main.lua` reads runtime knobs at boot;
+  `aggro_options.lua` applies detection scale to the regenerated patch.
+- **Live-test focus:** the `[PDST] tunables: …` boot banner; the expanded Mod Options page; a field
+  alpha now de-aggros on hide; a tower/gym boss still logs `scripted boss: GYM_… -> de-aggro PAUSED`.
 
 ## Where it's at
 **v2.1.0 is released** — committed to `main`, tagged `v2.1.0`, pushed. Three things landed since

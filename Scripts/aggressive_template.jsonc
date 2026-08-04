@@ -338,6 +338,66 @@
     "MexicanSalamander": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
     "LeafBird": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // sharp ears
     "CuteOrca": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
-    "SnakeQueen": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 } // default ears
+    "SnakeQueen": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // default ears
+    // --- Field bosses (alpha overworld variants) -- flipped from neutral so they hunt too (2026-08-04). ---
+    "BOSS_Alpaca": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_Bastet": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_Bastet_Ice": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_BerryGoat": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_BluePlatypus": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_Carbunclo": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_ChickenPal": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_CowPal": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_CuteButterfly": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_CuteFox": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_CuteMole": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_DreamDemon": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_ElecCat": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // field boss, sharp ears
+    "BOSS_FlowerDinosaur": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_FlowerDinosaur_Electric": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_FlowerDoll": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_FlowerDoll_Fire": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_FlowerRabbit": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // field boss, sharp ears
+    "BOSS_FlyingManta": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_Ganesha": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_GrassMammoth": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 6.0 }, // field boss, deaf ears
+    "BOSS_GrassMammoth_Ice": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 6.0 }, // field boss, deaf ears
+    "BOSS_Hedgehog": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_Hedgehog_Ice": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_IceFox": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // field boss, sharp ears
+    "BOSS_Kelpie": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_Kelpie_Fire": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_KingAlpaca": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_KingAlpaca_Ice": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_Kitsunebi": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_LittleBriarRose": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_Monkey": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_Monkey_Fire": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_Monkey_Ice": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_MopBaby": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_MopKing": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_NaughtyCat": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // field boss, sharp ears
+    "BOSS_NegativeOctopus": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_NightFox": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // field boss, sharp ears
+    "BOSS_Penguin": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_PinkCat": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_PinkRabbit": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // field boss, sharp ears
+    "BOSS_PinkRabbit_Grass": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 }, // field boss, sharp ears
+    "BOSS_PlantSlime": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_PlantSlime_Flower": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_RaijinDaughter": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_SakuraSaurus": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_SakuraSaurus_Water": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_Serpent": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_Serpent_Ground": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_SheepBall": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_SweetsSheep": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_SweetsSheep_Ground": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_VioletFairy": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_WeaselDragon": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_WeaselDragon_Fire": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_WindChimes": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_WindChimes_Ice": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 10.0 }, // field boss, default ears
+    "BOSS_WizardOwl": { "AIResponse": "Warlike_Anyway", "ViewingDistance": 25, "HearingRate": 16.0 } // field boss, sharp ears
   }
 }
