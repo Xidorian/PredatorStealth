@@ -222,10 +222,10 @@ if CONFIG.hide_enabled then
     end)
 end
 
--- DEV STUTTER METER lived here (per-50ms ExecuteInGameThread). Removed -- it was a load-tick
--- crash suspect and must NOT ship. To re-add briefly for a packaging stutter check, recover it
--- from git: `git show 4f3a1df:Scripts/main.lua` (block marked "DEV STUTTER METER"). It uses
--- trackCount() (kept above for that purpose).
+-- A dev frame-time meter was removed here: it pumped the game thread every 50ms and was a
+-- load-time crash suspect, so it must not ship. To measure hitching once before a release,
+-- recover it from git (`git show 4f3a1df:Scripts/main.lua`, near the end). It uses trackCount()
+-- (kept above for that purpose).
 
 log("Predators & Stealth runtime v3 loaded (judge-return driver). hide-to-escape " .. (CONFIG.hide_enabled and "ON" or "OFF")
     .. " (" .. CONFIG.hide_seconds .. "s no-sight, >" .. CONFIG.hide_min_distance_m .. "m, crouch x" .. CONFIG.hide_crouch_mult .. ").")

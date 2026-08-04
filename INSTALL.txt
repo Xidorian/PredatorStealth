@@ -1,0 +1,29 @@
+Predators & Stealth  v2.1.0  -- install
+
+REQUIRES: UE4SS + PalSchema (install both first).
+OPTIONAL: PalModOptions -- adds an in-game menu to pick which Pal sizes are hostile.
+          Without it, every Pal size is hostile (the default behaviour).
+
+1) Extract the contents of this zip into your UE4SS "Mods" folder, e.g.:
+     ...\Palworld\...\UE4SS\Mods\
+   That drops in two things:
+     Mods\PredatorStealth\                    <- the mod (hide-to-escape + the options menu)
+     Mods\PalSchema\mods\PredatorStealth\     <- the aggression data patch
+                                                 (merges into your PalSchema; safe)
+
+2) Enable the mod:
+     - Standard RE-UE4SS: the included enabled.txt auto-enables it.
+     - Steam-Workshop UE4SS: add this line to Mods\mods.txt:
+           PredatorStealth : 1
+
+3) Fully restart Palworld. (Also restart after any edit to the data patch or the menu.)
+
+Choose which Pals hunt you:
+  - With PalModOptions: Esc -> Mod Options -> Predators & Stealth -> toggle Pal sizes
+    (XS/S/M/L/XL). Turning a size OFF reverts those Pals to VANILLA behaviour -- this is NOT
+    making them passive, so a Pal that attacks you in the base game still will. Restart to apply.
+  - Or edit the data patch by hand (any setup):
+       Mods\PalSchema\mods\PredatorStealth\raw\aggressive.jsonc
+    (the file header explains every knob). Prey = the species simply NOT in that file.
+    NOTE: with PalModOptions installed this file is regenerated from your menu choices, so edit
+    Mods\PredatorStealth\Scripts\aggressive_template.jsonc instead (it's the source the menu filters).
