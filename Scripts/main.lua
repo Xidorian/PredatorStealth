@@ -45,40 +45,11 @@ local CONFIG = {
     gc_ms               = 1000,    -- staleness-GC cadence (pure Lua; touches no game objects)
     boss_markers        = { "Gym", "Raid", "Tower" },  -- pawn-species substrings that mark a SCRIPTED-DEFEAT boss (you can't hide from these; their defeat teardown crashes if touched). Tune as boss class names are confirmed.
     boss_pause_s        = 300,     -- when a boss is seen, pause ALL de-aggro this long -- long enough to ride through the boss's defeat teardown without touching it. Refreshes while the boss is alive.
-    verbose             = true,    -- DEV(branch): countdowns + crash breadcrumbs ("op ..."). Off before release.
+    verbose             = false,   -- countdown / give-up logging. Ship with this OFF.
 }
 
 local function log(m) print("[PDST] " .. m .. "\n") end
 local function vlog(m) if CONFIG.verbose then log(m) end end
-
--- ===== DEV CRASH TRACE -- BRANCH ONLY, STRIP BEFORE RELEASE ==================
--- UE4SS.log BUFFERS: on a use-after-free the last breadcrumbs never reach disk (that's the
--- 290ms void we saw before the last crash). This writes fine-grained "op" breadcrumbs to a
--- DEDICATED file and FLUSHES after every line, so the very last call before the crash
--- survives -- naming the exact UFunction + object + the isValid() state we saw right before
--- touching it. Falls back to print() if io is unavailable. Strip with the rest of the DEV code.
-local TRACE = { on = CONFIG.verbose, f = nil, path = nil }
-if TRACE.on then
-    local candidates = {
-        "C:/Program Files (x86)/Steam/steamapps/common/Palworld/Mods/NativeMods/UE4SS/Mods/PredatorsandStealth/pdst_crash_trace.log",
-        "pdst_crash_trace.log",   -- fallback: game CWD (Binaries/Win64)
-    }
-    for _, p in ipairs(candidates) do
-        local fh; local ok = pcall(function() fh = io and io.open(p, "a") end)
-        if ok and fh then TRACE.f = fh; TRACE.path = p; break end
-    end
-    if TRACE.f then pcall(function() TRACE.f:write("\n==== session start ====\n"); TRACE.f:flush() end) end
-    log("crash-trace: " .. (TRACE.f and ("flushing to " .. TRACE.path) or "io unavailable -> print() fallback"))
-end
--- op = short verb; mid = module id (may be nil in the walk); extra = free-form (species, validity)
-local function trace(op, mid, extra)
-    if not TRACE.on then return end
-    local t; pcall(function() t = os.clock() end)
-    local line = string.format("%.4f %s %s%s", t or 0, op, mid or "?", extra and (" " .. extra) or "")
-    if TRACE.f then pcall(function() TRACE.f:write(line, "\n"); TRACE.f:flush() end)
-    else print("[PDST] trace " .. line .. "\n") end
-end
--- ===== END DEV CRASH TRACE ===================================================
 
 local function isValid(o) return o ~= nil and type(o) == "userdata" and o.IsValid and o:IsValid() end
 local function objId(o) local n; pcall(function() n = o:GetFName():ToString() end); return n end
@@ -120,14 +91,12 @@ local function trackCount() local n = 0; for _ in pairs(TRACK) do n = n + 1 end;
 
 -- module -> its owning PalAIController, via the Outer chain, matched by class name. Safe here
 -- because JudgeReturnCombatStartPosition only fires on a LIVE, actively-fighting module.
-local function resolveController(module, mid)
+local function resolveController(module)
     local o = module
-    for i = 1, 6 do
-        trace("walk.getouter", mid, "step=" .. i)             -- about to GetOuter on current link
+    for _ = 1, 6 do
         local nxt; pcall(function() nxt = o:GetOuter() end)
         if not isValid(nxt) then return end
         o = nxt
-        trace("walk.getclass", mid, "step=" .. i)             -- about to read the outer's class
         local cn = classNameOf(o)
         if cn and cn:find("AIController") then return o end
     end
@@ -147,25 +116,17 @@ local function isBossSpecies(cls)
 end
 
 -- Give-up evaluation. ctrl is LIVE (resolved from a WARM, stable, actively-fighting module).
--- The `op ...` breadcrumbs name the exact game-object call in flight -- if a residual crash
--- ever slips through the warm-up gate, the last one printed before the log stops is the culprit.
-local function evaluate(e, ctrl, player, now, mid)
-    trace("getpawn", mid, "sp=" .. (e.cls or "?"))
-    local pawn = getPawn(ctrl)
-    local pvalid = isValid(pawn)
-    trace("gotpawn", mid, "pawnValid=" .. tostring(pvalid))
-    if not pvalid then return end
-    trace("pawndead", mid)
+local function evaluate(e, ctrl, player, now)
+    local pawn = getPawn(ctrl); if not isValid(pawn) then return end
     local pdead = false; pcall(function() pdead = pawn:IsDead() or pawn:IsDying() end)
     if pdead then return end
-    if not e.cls then trace("pawncls", mid); e.cls = classNameOf(pawn) end
+    if not e.cls then e.cls = classNameOf(pawn) end
     if isBossSpecies(e.cls) then                                  -- a boss: pause de-aggro (rides through its defeat), never de-aggro it
         BOSS_UNTIL = now + CONFIG.boss_pause_s
         if not e.bossLogged then e.bossLogged = true; log("boss: " .. e.cls .. " -> de-aggro PAUSED (no hiding from a boss)") end
         return
     end
     local ploc = getLoc(player); if not ploc then return end
-    trace("pawnloc", mid, "sp=" .. (e.cls or "?"))
     local pl = getLoc(pawn)
     local crouched = false; pcall(function() crouched = player.bIsCrouched end)
     local dt = e.lastEval and (now - e.lastEval) or 0
@@ -177,9 +138,7 @@ local function evaluate(e, ctrl, player, now, mid)
     if crouched then needed = needed * CONFIG.hide_crouch_mult end
 
     e.unseen = e.unseen or 0
-    trace("los", mid, "sp=" .. (e.cls or "?"))
     local sees = hasLOS(ctrl, player)
-    trace("los.ok", mid)
     if sees then e.unseen = math.max(0, e.unseen - dt * CONFIG.seen_decay)
     else e.unseen = e.unseen + dt end
     vlog(string.format("hunt %s unseen %.1f/%.1fs d=%.0fm", e.cls or "?", e.unseen, needed, d))
@@ -223,22 +182,17 @@ local function onJudgeReturn(self)
     -- ACTOR's class. That actor is volatile -- in a boss fight the pal targets your OTOMO pal,
     -- which can churn into a freed zombie mid-fight, and reading its class was the crash. The
     -- controller we resolve from the live warm module is safe; its TargetPlayers COUNT is just a number.
-    trace("resolve", mid, "sp=" .. (e.cls or "?"))
-    local ctrl = resolveController(module, mid)
-    local cvalid = isValid(ctrl)
-    trace("resolved", mid, "ctrlValid=" .. tostring(cvalid))
-    if not cvalid or tpCount(ctrl) == 0 then                    -- targets no player (a pal / nothing) -> not ours
+    local ctrl = resolveController(module)
+    if not isValid(ctrl) or tpCount(ctrl) == 0 then              -- targets no player (a pal / nothing) -> not ours
         e.ignore = true; e.lastEval = now                       -- cache so we never re-walk it
         return
     end
     if not ANNOUNCED then ANNOUNCED = true; log("hide-to-escape: driven by JudgeReturnCombatStartPosition") end
     if e.unseen == nil then e.unseen = 0; vlog("track+ " .. mid) end
-    trace("eval", mid, "sp=" .. (e.cls or "?"))
-    local giveUp = evaluate(e, ctrl, player, now, mid)
+    local giveUp = evaluate(e, ctrl, player, now)
     e.lastEval = now
     if giveUp then
-        trace("clear", mid, "sp=" .. (e.cls or "?"))
-        clearAggro(ctrl); trace("clear.ok", mid); TRACK[mid] = nil
+        clearAggro(ctrl); TRACK[mid] = nil
         log("hide-escape: " .. (e.cls or "?") .. " lost you")
     end
 end
@@ -268,13 +222,10 @@ if CONFIG.hide_enabled then
     end)
 end
 
--- ===== DEV STUTTER METER -- REMOVED (was a load-tick crash suspect) ==========
--- The per-50ms ExecuteInGameThread stutter meter lived here. Pulled while isolating a
--- load-time UE4SS tick-path crash (fault 0x708) that fired with hide-to-escape idle -- this
--- meter was the only ours-code on that game-thread path. RE-ADD before packaging to measure
--- stutter one last time. Recover it from git: `git show 4f3a1df:Scripts/main.lua` (block
--- marked "DEV STUTTER METER"). It uses trackCount() (still defined above).
--- ============================================================================
+-- DEV STUTTER METER lived here (per-50ms ExecuteInGameThread). Removed -- it was a load-tick
+-- crash suspect and must NOT ship. To re-add briefly for a packaging stutter check, recover it
+-- from git: `git show 4f3a1df:Scripts/main.lua` (block marked "DEV STUTTER METER"). It uses
+-- trackCount() (kept above for that purpose).
 
 log("Predators & Stealth runtime v3 loaded (judge-return driver). hide-to-escape " .. (CONFIG.hide_enabled and "ON" or "OFF")
     .. " (" .. CONFIG.hide_seconds .. "s no-sight, >" .. CONFIG.hide_min_distance_m .. "m, crouch x" .. CONFIG.hide_crouch_mult .. ").")
