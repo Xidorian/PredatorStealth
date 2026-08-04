@@ -10,7 +10,7 @@ Description, etc.
 Predators & Stealth
 
 ## Version
-2.0.1
+2.1.0
 
 ## Short summary (one line)
 Nearly every wild Pal now hunts you, but they hunt with real *senses*. Stay out of sight, keep quiet, crouch, and slip away. A hostile world where stealth actually works.
@@ -40,6 +40,14 @@ through the game's *own* senses:
 
 Your own Pals are never turned against you.
 
+**Choose who hunts you, by size (optional).** Install the optional **PalModOptions**
+framework and an in-game **Esc → Mod Options → Predators & Stealth** page appears, with a
+toggle for each wild-Pal size, **XS / S / M / L / XL**. Turn a size off and those Pals
+**revert to their vanilla behaviour** — and to be clear, that is *not* the same as making
+them passive: a Pal that already attacks you in the base game will **still attack**; you're
+only removing *our* added aggression from that size. Without PalModOptions, every size is
+hostile (the default). Changes apply on the next restart.
+
 **How it's built (and why it's light):** v2 drives all the aggression and
 detection through Palworld's native AI as a **data patch**, no constant
 background scanning, so there's no traversal stutter and it's friendly to lower-end
@@ -59,6 +67,8 @@ return later as an optional add-on.
 - **PalSchema** (by Oak), **required.** The aggression/detection is a PalSchema
   data patch. Install PalSchema first: https://www.nexusmods.com/palworld (search
   "PalSchema") or its Steam Workshop page.
+- **PalModOptions** (by Okaetsu), **optional.** Only needed for the in-game size-toggle
+  menu. Without it the mod runs exactly as before, with every Pal size hostile.
 - Single-player / client (host-and-play). Dedicated servers untested.
 
 ## Installation
@@ -72,8 +82,15 @@ return later as an optional add-on.
 4. Launch the game. (Fully restart after any edit to the data patch.)
 
 ## Customizing which Pals are hostile / how they sense you
-Everything lives in **`PalSchema\mods\PredatorStealth\raw\aggressive.jsonc`**,
-one line per Pal, editable in any text editor:
+
+**The easy way (with PalModOptions):** the in-game **Esc → Mod Options** menu toggles
+hostility by Pal size (XS/S/M/L/XL). Restart to apply.
+
+**The full-control way (any setup):** everything lives in
+**`PalSchema\mods\PredatorStealth\raw\aggressive.jsonc`**, one line per Pal, editable in any
+text editor. (Note: with PalModOptions installed, this file is regenerated from your menu
+choices on each change — edit the menu, or edit `PredatorStealth\Scripts\aggressive_template.jsonc`
+instead, which is the source the menu filters.)
 - **Make a Pal passive:** delete its line (it reverts to vanilla), or set its
   `AIResponse` to `Friendly`.
 - **Make a passive Pal hostile:** add a line for it with `AIResponse: Warlike`. If

@@ -14,7 +14,7 @@ PMO menu (5 size toggles)  ──writes──▶  <PalModOptions>/Scripts/config
    PalSchema/mods/PredatorsandStealth/raw/aggressive.jsonc   ← the EFFECTIVE file PalSchema loads
         │
         ▼  (next game boot)
-   PalSchema patches DT_PalMonsterParameter → those Pals are Warlike_Anyway; the rest are omitted → vanilla passive
+   PalSchema patches DT_PalMonsterParameter → those Pals are Warlike_Anyway; the rest are omitted → revert to VANILLA (a vanilla-hostile Pal still attacks)
 ```
 
 **Files (all in the `PredatorsandStealth` UE4SS mod's `Scripts/`):**
@@ -31,8 +31,9 @@ applier; our code only *decides* which Pals it makes hostile. And because `apply
 we regenerate the file for the **next** boot — no live mutation, no load-order race with PalSchema.
 
 **Ownership / the "split":** the applier OWNS `AIResponse` (by including/omitting a species). The
-template's `ViewingDistance`/`HearingRate` ride along unchanged. Off-tier species are omitted entirely
-(→ passive), per the patch convention "prey = absent from the file".
+template's `ViewingDistance`/`HearingRate` ride along unchanged. Off-tier species are omitted entirely,
+so they **revert to vanilla behaviour** (per the patch convention "absent from the file = vanilla"). This
+is not the same as passive: a species that is hostile in the base game keeps attacking when its tier is off.
 
 **Fallback (no PalModOptions installed, or no saved config yet):** every tier defaults on → the
 effective file = the full template = today's all-hostile behavior. The mod works standalone.
@@ -43,7 +44,7 @@ If the by-size menu proves annoying, revert to a static patch with per-pal excep
 1. Stop generating the effective file — remove the `require "aggro_options"` line in `main.lua`
    (or gate it off), so nothing overwrites `raw/aggressive.jsonc`.
 2. Ship `aggressive_template.jsonc`'s contents directly as `raw/aggressive.jsonc` (static, all hostile),
-   and hand-edit per-pal (`AIResponse` per species, or delete a line to make it passive).
+   and hand-edit per-pal (`AIResponse` per species, or delete a line to revert that Pal to vanilla).
 3. The size map + PMO page can stay dormant or be removed. Git history holds the wiring either way.
 
 ## Phase 2 (not built)

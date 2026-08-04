@@ -1,6 +1,14 @@
 # Changelog, Predators & Stealth
 
-## Unreleased (in testing)
+## 2.1.0
+
+**Added**
+- **In-game menu to choose which Pals hunt you, by size.** With the optional **PalModOptions**
+  framework installed, a *Predators & Stealth* page appears under **Esc → Mod Options** with a
+  toggle for each wild-Pal size (XS/S/M/L/XL). Turn a size off and those Pals **revert to their
+  vanilla behaviour** — this is *not* making them passive: a Pal that attacks you in the base game
+  still attacks; you're only removing this mod's *added* aggression from that size. Restart to
+  apply. Without PalModOptions the mod runs as before, with every size hostile.
 
 **Fixed**
 - **The mod could crash the game during some fights.** Hide-to-escape occasionally

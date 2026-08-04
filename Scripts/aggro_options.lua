@@ -2,7 +2,8 @@
 --
 -- WHAT: registers a PMO settings page (five size toggles: XS/S/M/L/XL) and, from the player's
 -- choices, regenerates the EFFECTIVE aggressive.jsonc that PalSchema loads -- including only pals
--- whose size tier is enabled. Off-tier pals are simply OMITTED -> they revert to vanilla passive.
+-- whose size tier is enabled. Off-tier pals are simply OMITTED from the patch -> they revert to
+-- VANILLA behaviour. This is NOT "made passive": a Pal that attacks you in vanilla still attacks.
 --
 -- WHY THIS SHAPE (the "split", documented per request): UE4SS Lua can't reliably write the raw
 -- monster DataTable, so PalSchema stays the applier; our job is only to DECIDE which pals it makes
@@ -15,16 +16,23 @@
 -- (pal_sizes.lua, extracted in-game once via GetSize). No PMO installed / no saved config yet ->
 -- every tier is on = the shipped all-hostile default.
 --
--- DEV: install paths are hardcoded below; generalize (derive from the mod dir) before release.
-
 local SIZES = require("pal_sizes")
 
-local PMO    = "PalModOptions.V1."
-local ID     = "PredatorStealth"
-local BASE   = "C:/Program Files (x86)/Steam/steamapps/common/Palworld/Mods/NativeMods/UE4SS/Mods"
-local TEMPLATE  = BASE .. "/PredatorsandStealth/Scripts/aggressive_template.jsonc"   -- stable, never written
-local EFFECTIVE = BASE .. "/PalSchema/mods/PredatorsandStealth/raw/aggressive.jsonc"  -- what PalSchema loads
-local FALLBACK_CFG = BASE .. "/PalModOptions/Scripts/config/" .. ID .. ".ini"
+local PMO = "PalModOptions.V1."
+local ID  = "PredatorStealth"
+
+-- Install paths derived at runtime (portable across installs) via the debug.getinfo pattern
+-- PalModOptions itself uses: our own Scripts dir, then up two to the UE4SS Mods root.
+local function scriptDir()
+    local s = debug.getinfo(1, "S").source or ""
+    s = (s:sub(1, 1) == "@") and s:sub(2) or s
+    return s:match("^(.*)[/\\][^/\\]+$") or "."
+end
+local SCRIPTS = scriptDir()                                                  -- .../Mods/PredatorsandStealth/Scripts
+local MODS    = SCRIPTS:match("^(.*)[/\\][^/\\]+[/\\][^/\\]+$") or SCRIPTS    -- .../Mods
+local TEMPLATE     = SCRIPTS .. "/aggressive_template.jsonc"                  -- stable, never written
+local EFFECTIVE    = MODS .. "/PalSchema/mods/PredatorsandStealth/raw/aggressive.jsonc"  -- what PalSchema loads
+local FALLBACK_CFG = MODS .. "/PalModOptions/Scripts/config/" .. ID .. ".ini"
 
 local function log(m) print("[PDST-Options] " .. m .. "\n") end
 local function sv_get(k) local v; pcall(function() v = ModRef:GetSharedVariable(k) end); return v end
@@ -40,7 +48,7 @@ local MANIFEST = table.concat({
       '"api":1,',
       '"id":"', ID, '",',
       '"title":"Predators & Stealth",',
-      '"description":"Choose which wild Pals hunt you, by size. Off = that size stays passive. Restart to apply.",',
+      '"description":"Choose which wild Pals hunt you, by size. Off = that size reverts to VANILLA (Pals that attack you in vanilla still will; it is not made passive). Restart to apply.",',
       '"version":1,',
       '"apply_mode":"game_restart",',
       '"options":[',
@@ -126,3 +134,4 @@ LoopAsync(4000, function()
     return false
 end)
 log("by-size aggression options loaded.")
+log("  effective = " .. EFFECTIVE)   -- verify path derivation resolved correctly (DEV log)
