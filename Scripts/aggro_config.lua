@@ -101,11 +101,12 @@ function M.effective()
         eff.hide_min_distance_m = p.hide_min_distance_m
         eff.hide_crouch_mult    = p.hide_crouch_mult
         eff.detect_scale        = p.detect_scale
-    else                                                                     -- Custom: the individual sliders
-        eff.hide_seconds        = raw.hide_seconds
-        eff.hide_min_distance_m = raw.hide_min_distance_m
-        eff.hide_crouch_mult    = raw.hide_crouch_mult
-        eff.detect_scale        = raw.detect_scale
+    else                                                                     -- Custom: the individual knobs
+        -- The knobs persist as enum STRINGS ("6", "0.5", ...); coerce back to numbers, default on miss.
+        eff.hide_seconds        = tonumber(raw.hide_seconds)        or DEFAULTS.hide_seconds
+        eff.hide_min_distance_m = tonumber(raw.hide_min_distance_m) or DEFAULTS.hide_min_distance_m
+        eff.hide_crouch_mult    = tonumber(raw.hide_crouch_mult)    or DEFAULTS.hide_crouch_mult
+        eff.detect_scale        = tonumber(raw.detect_scale)        or DEFAULTS.detect_scale
     end
     return eff
 end

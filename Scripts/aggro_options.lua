@@ -45,29 +45,28 @@ local function pmoPresent()
     return ModRef ~= nil and sv_get(PMO .. "ApiVersion") ~= nil
 end
 
--- ---- PMO page manifest: hide toggle + difficulty preset + custom sliders + size toggles ------
--- Value classes: hide on/off + the 4 tuning knobs are RUNTIME (read by main.lua); detect_scale is
--- also DATA (applied below in buildEffective); the sizes are DATA (filter below). All restart-to-apply.
--- The 4 sliders under "Custom tuning" are only consulted when Difficulty = Custom (see aggro_config).
+-- ---- PMO page manifest: hide toggle + difficulty preset + custom knobs + size toggles --------
+-- Every option is a CYCLE-BUTTON (boolean ON/OFF or enum) -- PMO has no slider, and cycle-buttons
+-- read cleaner than its text-input boxes. Section headers are dropped (fewer PMO pages); grouping is
+-- carried in the labels ("Custom: ..."). The 4 numeric knobs are enums of fixed steps; aggro_config
+-- coerces the chosen string back to a number. Value classes: hide on/off + the 4 knobs are RUNTIME
+-- (main.lua); detect_scale is also DATA (buildEffective below); sizes are DATA. All restart-to-apply.
+-- The 4 "Custom:" knobs are only consulted when Difficulty = Custom (see aggro_config).
 local MANIFEST = table.concat({
     '{',
       '"api":1,',
       '"id":"', ID, '",',
       '"title":"Predators & Stealth",',
       '"description":"Choose how wild Pals hunt you: hide-to-escape difficulty, fine tuning, and which sizes are hostile. Restart to apply.",',
-      '"version":2,',
+      '"version":3,',
       '"apply_mode":"game_restart",',
       '"options":[',
-        '{"key":"sec_hide","type":"section","label":"Hide-to-escape"},',
         '{"key":"hide_enabled","type":"boolean","label":"Hide-to-escape enabled","description":"Break line of sight and gain distance to make pursuers give up. Off = they only stop at the vanilla leash range.","default":true},',
-        '{"key":"sec_diff","type":"section","label":"Difficulty"},',
-        '{"key":"preset","type":"enum","label":"Difficulty","description":"Relaxed = easier to lose pursuers. Hardcore = harder, and Pals see/hear farther. Custom uses the sliders below.","choices":["Relaxed","Normal","Hardcore","Custom"],"default":"Normal"},',
-        '{"key":"sec_custom","type":"section","label":"Custom tuning (only used when Difficulty = Custom)"},',
-        '{"key":"hide_seconds","type":"integer","label":"Give-up time (seconds unseen)","description":"How long a pursuer must fail to see you before it gives up.","minimum":1,"maximum":30,"step":1,"default":6},',
-        '{"key":"hide_min_distance_m","type":"integer","label":"Give-up distance (metres)","description":"You must be at least this far away; point-blank never loses you.","minimum":5,"maximum":60,"step":1,"default":20},',
-        '{"key":"hide_crouch_mult","type":"number","label":"Crouch multiplier (lower = crouch helps more)","description":"Scales both the give-up time and distance while crouching.","minimum":0.1,"maximum":1.0,"step":0.05,"default":0.5},',
-        '{"key":"detect_scale","type":"number","label":"Detection range scale (x sight and hearing)","description":"Multiplies every hostile Pal\'s aggro sight and hearing range.","minimum":0.5,"maximum":2.0,"step":0.05,"default":1.0},',
-        '{"key":"sec_sizes","type":"section","label":"Hostile Pal sizes"},',
+        '{"key":"preset","type":"enum","label":"Difficulty","description":"Relaxed = easier to lose pursuers. Hardcore = harder, and Pals see/hear farther. Custom uses the four Custom knobs below.","choices":["Relaxed","Normal","Hardcore","Custom"],"default":"Normal"},',
+        '{"key":"hide_seconds","type":"enum","label":"Custom: give-up time (seconds unseen)","description":"How long a pursuer must fail to see you before it gives up.","choices":["3","4","5","6","8","10","12","15","20"],"default":"6"},',
+        '{"key":"hide_min_distance_m","type":"enum","label":"Custom: give-up distance (metres)","description":"You must be at least this far away; point-blank never loses you.","choices":["10","15","20","25","30","40","50"],"default":"20"},',
+        '{"key":"hide_crouch_mult","type":"enum","label":"Custom: crouch multiplier (lower = crouch helps more)","description":"Scales both the give-up time and distance while crouching.","choices":["0.3","0.4","0.5","0.6","0.7","0.8","1.0"],"default":"0.5"},',
+        '{"key":"detect_scale","type":"enum","label":"Custom: detection range scale (x sight and hearing)","description":"Multiplies every hostile Pal\'s aggro sight and hearing range.","choices":["0.5","0.75","1.0","1.25","1.5","2.0"],"default":"1.0"},',
         '{"key":"size_XS","type":"boolean","label":"XS Pals hostile","description":"Off = XS Pals revert to VANILLA (vanilla-hostile ones still attack; not made passive).","default":true},',
         '{"key":"size_S","type":"boolean","label":"S Pals hostile","default":true},',
         '{"key":"size_M","type":"boolean","label":"M Pals hostile","default":true},',
