@@ -1,7 +1,8 @@
 Predators & Stealth  v2.1.0  -- install
 
 REQUIRES: UE4SS + PalSchema (install both first).
-OPTIONAL: PalModOptions -- adds an in-game menu to pick which Pal sizes are hostile.
+OPTIONAL: PalModOptions (a.k.a. "Mod Options Framework"; on Nexus Mods and Steam Workshop)
+          -- adds an in-game menu to pick which Pal sizes are hostile.
           Without it, every Pal size is hostile (the default behaviour).
 
 1) Extract the contents of this zip into your UE4SS "Mods" folder, e.g.:

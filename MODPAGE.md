@@ -64,11 +64,12 @@ return later as an optional add-on.
 
 ## Requirements
 - **UE4SS** (RE-UE4SS) for Palworld.
-- **PalSchema** (by Oak), **required.** The aggression/detection is a PalSchema
+- **PalSchema** (by Okaetsu), **required.** The aggression/detection is a PalSchema
   data patch. Install PalSchema first: https://www.nexusmods.com/palworld (search
   "PalSchema") or its Steam Workshop page.
-- **PalModOptions** (by Okaetsu), **optional.** Only needed for the in-game size-toggle
-  menu. Without it the mod runs exactly as before, with every Pal size hostile.
+- **PalModOptions** (a.k.a. **Mod Options Framework**), **optional.** Only needed for the
+  in-game size-toggle menu; without it the mod runs exactly as before, every Pal size hostile.
+  On both **Nexus Mods** (as *PalModOptions*) and **Steam Workshop** (as *Mod Options Framework*).
 - Single-player / client (host-and-play). Dedicated servers untested.
 
 ## Installation
@@ -115,4 +116,4 @@ Hide-to-escape timing is in `PredatorStealth\Scripts\main.lua` (`CONFIG` block):
 - Plays nice with other UE4SS Lua and PalSchema mods.
 
 ## Credits
-Created by Xidorian. Aggression/detection via **PalSchema** (Oak).
+Created by Xidorian. Aggression/detection via **PalSchema** (Okaetsu).
