@@ -27,8 +27,10 @@ _Last updated: 2026-08-04. **v2.1.0 shipped.**_
   `archive/crash-instrumented-2026-08-04` (the crash-trace build, if a crash ever resurfaces).
 
 ## Next
-See `NEXT.md`. Headline: **phase-2 per-pal overrides** on the size buckets, then the smaller idea
-backlog (boss markers, multiplayer, level-gap sight). The crash/mounted/menu work is done + shipped.
+No active work item — **v2.1.0 is shipped and uploaded.** The options menu stays size-only by
+choice (per-pal tweaking = edit the JSON). See `NEXT.md` for the backlog: the open your-pal-vs-mobs
+question, boss-marker + multiplayer verification, and ideas (more menu tunables, level-gap sight,
+Mammorest aggro).
 
 ## Dev note
 The shipped `main.lua` is clean (`verbose = false`, no crash-trace). The crash-trace facility lives
