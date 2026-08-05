@@ -326,3 +326,8 @@ log("Predators & Stealth runtime v3 loaded (judge-return driver). hide-to-escape
 -- here must never take down the hide-to-escape runtime above.
 local okOpt, errOpt = pcall(require, "aggro_options")
 if not okOpt then log("aggro-options module failed to load: " .. tostring(errOpt)) end
+
+-- DEV grade probe (mounted-aggro / BiologicalGrade investigation). TEMPORARY -- remove this require
+-- and delete grade_probe.lua before release. Guarded so it can never affect the runtime above.
+local okProbe, errProbe = pcall(require, "grade_probe")
+if not okProbe then log("grade-probe failed to load: " .. tostring(errProbe)) end
