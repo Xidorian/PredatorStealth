@@ -327,7 +327,9 @@ log("Predators & Stealth runtime v3 loaded (judge-return driver). hide-to-escape
 local okOpt, errOpt = pcall(require, "aggro_options")
 if not okOpt then log("aggro-options module failed to load: " .. tostring(errOpt)) end
 
--- DEV grade probe (mounted-aggro / BiologicalGrade investigation). TEMPORARY -- remove this require
--- and delete grade_probe.lua before release. Guarded so it can never affect the runtime above.
-local okProbe, errProbe = pcall(require, "grade_probe")
-if not okProbe then log("grade-probe failed to load: " .. tostring(errProbe)) end
+-- Mounted-aggro: pin the ridden Pal's biological grade to 0 so wild Pals keep hunting you while
+-- mounted (lets the data patch use plain "Warlike" everywhere). Guarded: a failure here must not
+-- affect the hide-to-escape runtime above. (grade_probe.lua stays in the repo as the DEV probe that
+-- confirmed this mechanism; it is intentionally NOT required.)
+local okMount, errMount = pcall(require, "mount_aggro")
+if not okMount then log("mount-aggro module failed to load: " .. tostring(errMount)) end
