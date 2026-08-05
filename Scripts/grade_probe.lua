@@ -1,22 +1,20 @@
--- grade_probe.lua -- DEV PROBE for the mounted-aggro / BiologicalGrade plan. TEMPORARY: delete + drop
--- the require before any release. Touches ONLY the player (a stable, long-lived actor) -- no wild-pal
--- AI -- so it's crash-safe. Everything is pcall/isValid guarded.
+-- grade_probe.lua v2 -- DEV PROBE for the mounted-aggro / BiologicalGrade plan. TEMPORARY: delete +
+-- drop the require before any release. Touches only the PLAYER and the player's OWN MOUNT (both stable
+-- actors -- never volatile wild-pal AI), all pcall/isValid guarded, so it's crash-safe.
 --
--- WHAT WE'RE ANSWERING (see the whole plan in STATUS/NEXT):
---   1. The player's BiologicalGrade on FOOT vs MOUNTED (does mounting raise it, and to what?).
---   2. Can we WRITE the player's grade, and does it STICK, or does the game re-apply it every tick?
---   3. With grade pinned to 0: do wild Warlike Pals now engage you (mounted + skittish)? -> behavioural.
--- The flee-from-greater AI compares BiologicalGrade (EPalBiologicalGradeComparedResult); there is no
--- live per-instance Size field to override (Size is a static DB property), so grade is the only lever.
+-- v1 finding: the player's BiologicalGrade is 0 on foot AND while mounted (it never changed). So the
+-- "you read as the mount's grade" happens on the MOUNT Pal, not on you -- pinning YOUR grade is a
+-- no-op. v2 therefore finds the mount and reads/pins ITS grade too.
 --
--- USE: watch UE4SS.log for [PDST-Probe] lines. On load it prints your foot grade; mount up and it
--- prints the mounted grade. Press F6 to TOGGLE a forced grade of 0 (it re-pins every tick, and logs
--- if the game keeps overwriting it) -- then go provoke Pals / ride around and watch whether they attack.
--- Press F6 again to release.
+-- ANSWERS NOW:
+--   1. While riding, what is the MOUNT's BiologicalGrade? (expect ~5 -- the value wild Pals react to)
+--   2. If we pin the mount's grade to 0, do wild Pals start attacking the mounted player? -> the fix.
+--
+-- USE: mount a Pal. Press F6 -> logs the mount's name + natural grade, then forces player AND mount
+-- grade to 0 (re-pins each poll, logs any drift). Ride around / provoke wild Pals and watch. F6 again
+-- = release + restore. Watch UE4SS.log for [PDST-Probe] lines.
 
-local POLL_MS  = 500
-local PIN_KEY  = "F6"      -- toggle force-grade-0 (avoid R = hot-reload)
-
+local POLL_MS = 500
 local function log(m) print("[PDST-Probe] " .. m .. "\n") end
 local function isValid(o) return o ~= nil and type(o) == "userdata" and o.IsValid and o:IsValid() end
 
@@ -24,56 +22,78 @@ local function player()
     local p; pcall(function() p = FindFirstOf("PalPlayerCharacter") end)
     return isValid(p) and p or nil
 end
-local function gradeComp(p)
-    local c; pcall(function() c = p.CharacterParameterComponent end)
+local function nameOf(a) local n; pcall(function() n = a:GetFName():ToString() end); return n or "?" end
+local function gradeComp(a)
+    local c; pcall(function() c = a.CharacterParameterComponent end)
     return isValid(c) and c or nil
 end
-local function readGrade(p)
-    local c = gradeComp(p); if not c then return nil end
-    local g; local ok = pcall(function() g = c.BiologicalGrade end)
-    return ok and g or nil
+local function readGrade(a)
+    local c = gradeComp(a); if not c then return nil end
+    local g; local ok = pcall(function() g = c.BiologicalGrade end); return ok and g or nil
 end
-local function writeGrade(p, v)
-    local c = gradeComp(p); if not c then return false end
+local function writeGrade(a, v)
+    local c = gradeComp(a); if not c then return false end
     return pcall(function() c.BiologicalGrade = v end)
 end
 
-local pinned   = false     -- are we forcing grade to 0?
-local baseline = nil       -- natural (unpinned) grade last seen -- what F6-off restores to
-local lastRead = nil       -- last value printed (only log on change while unpinned)
+-- The Pal the player is riding: the one active ride-marker with a live rider (single-player = one).
+-- A ride-marker component's Outer is its owning actor = the mount.
+local function findMount()
+    local markers; pcall(function() markers = FindAllOf("PalRideMarkerComponent") end)
+    if type(markers) ~= "table" then return nil end
+    for _, m in ipairs(markers) do
+        if isValid(m) then
+            local rider; pcall(function() rider = m:GetRiderCharacter() end)
+            if isValid(rider) then
+                local mount; pcall(function() mount = m:GetOuter() end)
+                if isValid(mount) then return mount end
+            end
+        end
+    end
+    return nil
+end
 
--- Poll: unpinned -> log grade whenever it changes (foot<->mount shows up here). Pinned -> re-apply 0
--- each tick and, if it drifted back on its own, log that (means the game re-applies -> we must keep pinning).
+local pinned, mount, mountNatural, lastPlayer = false, nil, nil, nil
+
 LoopAsync(POLL_MS, function()
     local p = player(); if not p then return false end
-    local g = readGrade(p); if g == nil then return false end
+    local pg = readGrade(p)
     if pinned then
-        if g ~= 0 then log("grade drifted to " .. tostring(g) .. " on its own -> game re-applies; re-pinning 0") end
-        writeGrade(p, 0)
+        writeGrade(p, 0)                                          -- player (already 0; harmless)
+        if isValid(mount) then
+            local mg = readGrade(mount)
+            if mg ~= nil and mg ~= 0 then log("mount grade drifted to " .. tostring(mg) .. " on its own -> game re-applies; re-pinning 0") end
+            writeGrade(mount, 0)
+        end
     else
-        baseline = g
-        if g ~= lastRead then log("player BiologicalGrade = " .. tostring(g)); lastRead = g end
+        if pg ~= nil and pg ~= lastPlayer then log("player BiologicalGrade = " .. tostring(pg) .. " (foot or mounted)"); lastPlayer = pg end
     end
     return false
 end)
 
--- F6: toggle the forced grade
 local okKey = pcall(function()
-    RegisterKeyBind(Key[PIN_KEY], function()
-        local p = player(); if not p then log(PIN_KEY .. ": no player found"); return end
+    RegisterKeyBind(Key.F6, function()
+        local p = player(); if not p then log("F6: no player"); return end
         pinned = not pinned
         if pinned then
-            local before = readGrade(p)
-            writeGrade(p, 0)
-            log(string.format("PIN ON  -> grade forced 0 (natural was %s, read-back %s). Provoke Pals / mount up and watch.",
-                tostring(baseline), tostring(readGrade(p))))
-            log("   (before=" .. tostring(before) .. ")")
+            mount = findMount()
+            if isValid(mount) then
+                mountNatural = readGrade(mount)
+                log("PIN ON  -> mount '" .. nameOf(mount) .. "' natural grade = " .. tostring(mountNatural)
+                    .. "  ->  forcing player + mount to 0. Ride around / provoke wild Pals and watch.")
+                writeGrade(p, 0); writeGrade(mount, 0)
+            else
+                log("PIN ON  -> player grade 0, but NO MOUNT FOUND -- are you actually riding a Pal? Mount up first, then toggle F6 again.")
+                writeGrade(p, 0)
+            end
         else
-            writeGrade(p, baseline or 5); lastRead = nil
-            log("PIN OFF -> restored grade to " .. tostring(baseline or 5) .. " (game recomputes it on state change anyway)")
+            writeGrade(p, 0)
+            if isValid(mount) then writeGrade(mount, mountNatural or 5) end
+            log("PIN OFF -> restored (mount grade back to " .. tostring(mountNatural) .. "; game recomputes on state change anyway).")
+            mount, mountNatural = nil, nil
         end
     end)
 end)
 
-log("grade probe loaded. Poll logs grade on change; press " .. PIN_KEY .. " to toggle force-grade-0."
-    .. (okKey and "" or "  (WARNING: keybind registration failed -> read-only poll still runs)"))
+log("grade probe v2 loaded. MOUNT a Pal, then press F6 -> reports the mount's grade + pins it to 0. F6 again = off."
+    .. (okKey and "" or "  (WARNING: keybind failed -> read-only poll still runs)"))
