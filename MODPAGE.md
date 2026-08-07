@@ -10,7 +10,7 @@ Description, etc.
 Predators & Stealth
 
 ## Version
-2.1.0
+2.2.0
 
 ## Short summary (one line)
 Nearly every wild Pal now hunts you, but they hunt with real *senses*. Stay out of sight, keep quiet, crouch, and slip away. A hostile world where stealth actually works.

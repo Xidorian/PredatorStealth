@@ -45,7 +45,7 @@ local CONFIG = {
     gc_ms               = 1000,    -- staleness-GC cadence (pure Lua; touches no game objects)
     boss_row_prefixes   = { "GYM_", "RAID_" },  -- DT row-name (CharacterID) prefixes of SCRIPTED-DEFEAT bosses: GYM_ = tower, RAID_ = raid. You can't hide from these AND their defeat teardown crashes if touched. Field alphas (BOSS_*) are deliberately NOT here -- they stay hideable.
     boss_pause_s        = 300,     -- when a boss is seen, pause ALL de-aggro this long -- long enough to ride through the boss's defeat teardown without touching it. Refreshes while the boss is alive.
-    verbose             = true,    -- DEV: ON enables the crash-trace + countdown logging. Ship with this OFF.
+    verbose             = false,   -- countdown / give-up logging (vlog). Ship with this OFF.
 }
 
 local function log(m) print("[PDST] " .. m .. "\n") end
@@ -75,35 +75,6 @@ do
     end
 end
 
--- ===== DEV CRASH TRACE -- BRANCH ONLY, STRIP BEFORE RELEASE ==================
--- UE4SS.log BUFFERS, so on a use-after-free the last breadcrumbs never reach disk. This writes
--- fine-grained "op" breadcrumbs to a DEDICATED file and FLUSHES after every line, so the very last
--- call before a hard crash survives -- naming the exact UFunction + object + isValid state we saw
--- right before touching it. Path derives from the mod's Scripts dir (OS-portable), CWD fallback.
--- Enabled while CONFIG.verbose = true. Strip this whole block + the trace() calls before release.
-local TRACE = { on = CONFIG.verbose, f = nil, path = nil }
-if TRACE.on then
-    local dir = "."
-    pcall(function()
-        local s = debug.getinfo(1, "S").source or ""
-        s = (s:sub(1, 1) == "@") and s:sub(2) or s
-        dir = s:match("^(.*)[/\\][^/\\]+$") or "."          -- .../PredatorsandStealth/Scripts
-    end)
-    for _, p in ipairs({ dir .. "/pdst_crash_trace.log", "pdst_crash_trace.log" }) do
-        local fh; local ok = pcall(function() fh = io and io.open(p, "a") end)
-        if ok and fh then TRACE.f = fh; TRACE.path = p; break end
-    end
-    if TRACE.f then pcall(function() TRACE.f:write("\n==== session start ====\n"); TRACE.f:flush() end) end
-    log("crash-trace: " .. (TRACE.f and ("flushing to " .. TRACE.path) or "io unavailable -> print() fallback"))
-end
-local function trace(op, mid, extra)
-    if not TRACE.on then return end
-    local t; pcall(function() t = os.clock() end)
-    local line = string.format("%.4f %s %s%s", t or 0, op, tostring(mid or "?"), extra and (" " .. extra) or "")
-    if TRACE.f then pcall(function() TRACE.f:write(line, "\n"); TRACE.f:flush() end)
-    else print("[PDST] trace " .. line .. "\n") end
-end
--- ===== END DEV CRASH TRACE ===================================================
 
 local function isValid(o) return o ~= nil and type(o) == "userdata" and o.IsValid and o:IsValid() end
 local function objId(o) local n; pcall(function() n = o:GetFName():ToString() end); return n end
@@ -171,17 +142,13 @@ local function bossActive(now) return BOSS_UNTIL ~= nil and now < BOSS_UNTIL end
 -- Called only inside evaluate() (warm, live, alive pawn -- the same safe envelope as classNameOf),
 -- pcall-guarded at every hop; returns nil on any miss so the caller just retries next eval.
 local function rowIdOf(pawn, mid)
-    trace("rowid.comp", mid)                                      -- about to read pawn.CharacterParameterComponent
     local comp; pcall(function() comp = pawn.CharacterParameterComponent end)
-    if not isValid(comp) then trace("rowid.nocomp", mid); return nil end
-    trace("rowid.getind", mid)                                    -- about to call GetIndividualParameter()
+    if not isValid(comp) then return nil end
     local ind; pcall(function() ind = comp:GetIndividualParameter() end)
-    if not isValid(ind) then trace("rowid.noind", mid); return nil end
-    trace("rowid.getid", mid)                                     -- about to call GetCharacterID()
+    if not isValid(ind) then return nil end
     local fn; pcall(function() fn = ind:GetCharacterID() end)
-    if fn == nil then trace("rowid.noid", mid); return nil end
+    if fn == nil then return nil end
     local s; pcall(function() s = fn:ToString() end)
-    trace("rowid.ok", mid, "row=" .. tostring(s))
     return s
 end
 -- Scripted-defeat boss = row name starts with GYM_ (tower) or RAID_ (raid). Prefix-anchored at
@@ -196,19 +163,16 @@ end
 
 -- Give-up evaluation. ctrl is LIVE (resolved from a WARM, stable, actively-fighting module).
 local function evaluate(e, ctrl, player, now, mid)
-    trace("eval.getpawn", mid, "sp=" .. (e.cls or "?"))
-    local pawn = getPawn(ctrl); if not isValid(pawn) then trace("eval.nopawn", mid); return end
-    trace("eval.pawndead", mid)
+    local pawn = getPawn(ctrl); if not isValid(pawn) then return end
     local pdead = false; pcall(function() pdead = pawn:IsDead() or pawn:IsDying() end)
-    if pdead then trace("eval.dead", mid); return end
-    if not e.cls then trace("eval.cls", mid); e.cls = classNameOf(pawn) end
+    if pdead then return end
+    if not e.cls then e.cls = classNameOf(pawn) end
     if not e.rowId then e.rowId = rowIdOf(pawn, mid) end          -- authoritative species row name; nil-safe, retries next eval
     if isScriptedBoss(e.rowId) then                               -- GYM_/RAID_ only: pause de-aggro (rides through its defeat), never de-aggro it
         BOSS_UNTIL = now + CONFIG.boss_pause_s
         if not e.bossLogged then e.bossLogged = true; log("scripted boss: " .. e.rowId .. " -> de-aggro PAUSED (no hiding from a tower/raid boss)") end
         return
     end
-    trace("eval.body", mid, "sp=" .. (e.cls or "?") .. " row=" .. tostring(e.rowId))
     local ploc = getLoc(player); if not ploc then return end
     local pl = getLoc(pawn)
     local crouched = false; pcall(function() crouched = player.bIsCrouched end)
@@ -221,9 +185,7 @@ local function evaluate(e, ctrl, player, now, mid)
     if crouched then needed = needed * CONFIG.hide_crouch_mult end
 
     e.unseen = e.unseen or 0
-    trace("eval.los", mid)                                        -- about to LineOfSightTo (a game call on the controller)
     local sees = hasLOS(ctrl, player)
-    trace("eval.los.ok", mid)
     if sees then e.unseen = math.max(0, e.unseen - dt * CONFIG.seen_decay)
     else e.unseen = e.unseen + dt end
     vlog(string.format("hunt %s unseen %.1f/%.1fs d=%.0fm", e.cls or "?", e.unseen, needed, d))
@@ -240,11 +202,10 @@ local ANNOUNCED = false
 local function onJudgeReturn(self)
     if not CONFIG.hide_enabled then return end
     local now; pcall(function() now = os.clock() end); if not now then return end
-    if bossActive(now) then trace("hook.bossbail"); return end    -- boss fight: pause, touch NOTHING
+    if bossActive(now) then return end    -- boss fight: pause, touch NOTHING
     local player = livePlayer(); if not player then return end    -- you dead/dying: touch nothing
     local module = unwrap(self); if not isValid(module) then return end
     local mid = objId(module); if not mid then return end
-    trace("hook.contact", mid)                                    -- a live hunting module reached us this frame
 
     -- FIRST CONTACT: record only. We touch NOTHING but `self` (the one object the hook
     -- guarantees is live this frame). A module in a transient spawn/teardown state can fire
@@ -268,7 +229,6 @@ local function onJudgeReturn(self)
     -- ACTOR's class. That actor is volatile -- in a boss fight the pal targets your OTOMO pal,
     -- which can churn into a freed zombie mid-fight, and reading its class was the crash. The
     -- controller we resolve from the live warm module is safe; its TargetPlayers COUNT is just a number.
-    trace("hook.resolve", mid)                                    -- about to Outer-walk to the controller
     local ctrl = resolveController(module)
     if not isValid(ctrl) or tpCount(ctrl) == 0 then              -- targets no player (a pal / nothing) -> not ours
         e.ignore = true; e.lastEval = now                       -- cache so we never re-walk it
@@ -282,8 +242,7 @@ local function onJudgeReturn(self)
     -- tutorial Mammorest / field bosses fire this hook?"). One line per module, first eval only.
     if not e.contactLogged then e.contactLogged = true; log("driver contact: row=" .. tostring(e.rowId) .. " cls=" .. (e.cls or "?")) end
     if giveUp then
-        trace("hook.clear", mid, "row=" .. tostring(e.rowId))
-        clearAggro(ctrl); trace("hook.clear.ok", mid); TRACK[mid] = nil
+        clearAggro(ctrl); TRACK[mid] = nil
         log("hide-escape: " .. (e.cls or "?") .. " lost you")
     end
 end
@@ -303,7 +262,6 @@ if CONFIG.hide_enabled then
     LoopAsync(CONFIG.gc_ms, function()
         local now; pcall(function() now = os.clock() end)
         if now then
-            trace("gc.tick", nil, "n=" .. trackCount())           -- pure-Lua sweep; touches no game object
             for mid, e in pairs(TRACK) do
                 if not e.lastSeen or (now - e.lastSeen) > CONFIG.stale_s then
                     TRACK[mid] = nil; vlog("track- " .. mid .. " (stale)")

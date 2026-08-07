@@ -1,6 +1,17 @@
 # Changelog, Predators & Stealth
 
-## Unreleased (in testing)
+## 2.2.0
+
+**Fixed**
+- **The Steam Workshop version now actually installs.** In 2.1.0 the aggression data file was packaged
+  in the wrong folder, so on Steam Workshop the mod appeared to load but did nothing — Pals stayed
+  passive, neutral Pals stayed neutral, and no Mod Options page showed up. The package layout is fixed,
+  so subscribing now works out of the box (no more hand-moving files).
+
+**Changed**
+- **Wild Pals are less prone to brawling with each other.** Aggression now uses the standard `Warlike`
+  response instead of the blanket `Warlike_Anyway`, so Pals still hunt you but no longer relentlessly
+  pile onto every weaker Pal nearby — the natural predator/prey behaviour is left closer to vanilla.
 
 **Added**
 - **Difficulty presets and fine-tuning in the Mod Options menu.** A new **Difficulty** setting
